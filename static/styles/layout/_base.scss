@@ -1,0 +1,47 @@
+#app {
+    width: 100%;
+    display: grid;
+    grid-template-rows: [topsmall] max-content [topbig] max-content [bc] auto [ws] max-content;
+
+    #header {
+        position: sticky;
+        grid-row: topsmall / ws;
+        background-color: white;
+    }
+
+    #content {
+        grid-row: ws;
+        margin: 24px;
+    }
+
+    #sidebar {
+        grid-column: left;
+        grid-row: topsmall / 1000 span;
+    }
+
+    @media only screen and (max-width: 700px) {
+        grid-template-columns: [left] 300px [right] auto;
+
+        #header {
+            grid-column: left / 2 span;
+            top: 40px;
+        }
+
+        #content {
+            grid-column: left / 2 span;
+        }
+    }
+
+    @media only screen and (min-width: 701px) {
+        grid-template-columns: [left] max-content [right] auto;
+
+        #header {
+            grid-column: right;
+            top: 70px;
+        }
+
+        #content {
+            grid-column: right;
+        }
+    }
+}

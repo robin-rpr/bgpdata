@@ -1,0 +1,32 @@
+/* Base */
+@import "./base/_mixins";
+@import "./base/_variables";
+@import "./base/_typography";
+
+/* Components */
+@import "./components/_searchbar";
+
+/* Layout */
+@import "./layout/_base";
+
+/* Pages */
+@import "./pages/_resource";
+
+:root {
+    --ripe-app-font-family: "Public Sans";
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    font-family: var(--ripe-app-font-family), Helvetica, Verdana, sans-serif;
+    background: #f4f4f4;
+    font-size: 16px; // For 1rem
+    color: #0d0d0d;
+    margin: 0;
+    width: 100%;
+    height: 100%;
+}

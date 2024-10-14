@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>FOMBook | Connect and share with other FOM Students and Alumni.</title>
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="64x64"
+            href="{{ url_for('static',filename='images/favicon-64x64.png')}}"
+        />
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="32x32"
+            href="{{ url_for('static',filename='images/favicon-32x32.png')}}"
+        />
+        <link
+            rel="icon"
+            type="image/png"
+            sizes="16x16"
+            href="{{ url_for('static',filename='images/favicon-16x16.png')}}"
+        />
+        <link
+            rel="stylesheet"
+            type="text/css"
+            href="{{ url_for('static',filename='styles/main.css')}}"
+        />
+        <link
+            rel="stylesheet"
+            type="text/css"
+            href="{{ url_for('static',filename='fonts/poppins/style.css')}}"
+        />
+        <link
+            rel="stylesheet"
+            type="text/css"
+            href="{{ url_for('static',filename='fonts/roboto/style.css')}}"
+        />
+        <script src="{{ url_for('static',filename='libs/jquery-3.6.0.min.js')}}"></script>
+        <script src="{{ url_for('static',filename='scripts/main.js')}}"></script>
+    </head>
+
+    <body>
+        <div class="index">
+            <div class="index__about">
+                <img
+                    class="about__logo"
+                    src="{{ url_for('static',filename='images/logo.svg')}}"
+                    alt="FOMBook"
+                    draggable="false"
+                />
+                <div class="about__subtitle">
+                    Connect and share with other FOM Students and Alumni.
+                </div>
+                <div class="about__users">
+                    {% for user in users %}
+                    <div
+                        class="users__image"
+                        style="background: url('{{ user["avatar"] }}') center center / cover no-repeat, {{ user['color'] }}"
+                    >
+                        {% if user['avatar'] == None %} {{ user['first_name'][0] }}{{
+                        user['last_name'][0] }} {% endif %}
+                    </div>
+                    {% endfor %}
+                    <div class="users__value">
+                        Join {{ user_count }}+ people.
+                    </div>
+                </div>
+            </div>
+            <form class="index__form" action="/verify" method="GET">
+                <div class="form__title">Get Access</div>
+                <div class="form__subtitle">
+                    Continue with your University Email or Personal Email as an Alumnus.
+                </div>
+                <input
+                    type="email"
+                    name="email"
+                    placeholder="example@fom-net.de"
+                    class="form__input"
+                    required
+                />
+                <div class="form__note">
+                    By clicking "Continue“ you agree to our
+                    <a a class="note__link" href="#">Code of Conduct</a>,
+                    <a a class="note__link" href="#">Terms of Service</a> and
+                    <a a class="note__link" href="#">Privacy Policy</a>.
+                </div>
+                <button
+                    class="form__button form__button--primary"
+                    type="submit"
+                >
+                    Continue
+                </button>
+            </form>
+        </div>
+        <script>
+            $(document).ready(function () {
+                localStorage.setItem("is_authenticated", false);
+            });
+        </script>
+    </body>
+</html>

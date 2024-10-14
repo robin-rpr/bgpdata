@@ -1,0 +1,14 @@
+flask
+Flask-Compress==1.9.0
+pymongo[srv]
+postmarker
+APScheduler
+gunicorn
+flask-cors
+flask-talisman
+alt-profanity-check
+libsass
+pytz
+bleach
+Cython>=0.29.24
+numpy==1.19.5

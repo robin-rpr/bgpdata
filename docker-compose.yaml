@@ -1,0 +1,41 @@
+version: "3.8"
+
+services:
+    # MongoDB service
+    mongo:
+        image: mongo:latest
+        container_name: mongo
+        restart: always
+        ports:
+            - "27017:27017"
+        volumes:
+            - mongo_data:/data/db
+            - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+
+    # Flask application service
+    web:
+        image: python:3.6
+        container_name: web
+        restart: always
+        environment:
+            - MONGODB_DATABASE=mongodb://mongo:27017/
+            - POSTMARK_API_KEY=your-postmark-api-key
+            - FLASK_SECRET_KEY=your-flask-secret-key
+            - FLASK_HOST=http://localhost:5200
+            - FLASK_ENV=development
+            - FLASK_DEBUG=1
+            - FLASK_APP=app.py
+            - FLASK_RUN_PORT=5200
+        ports:
+            - "5200:5200"
+        depends_on:
+            - mongo
+        working_dir: /app
+        volumes:
+            - .:/app
+        command: >
+            sh -c "pip install --no-cache-dir -r requirements.txt && gunicorn --bind 0.0.0.0:5200 --reload --reload-extra-file=\"static/styles/main.scss\" app:app"
+
+# Define named volumes
+volumes:
+    mongo_data:
