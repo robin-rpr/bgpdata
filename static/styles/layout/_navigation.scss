@@ -1,5 +1,5 @@
 #navigation {
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid #e0e0e0;
     height: 48px;
     width: 100%;
 
@@ -22,10 +22,24 @@
 
         .list__item {
             position: relative;
+            transition: background-color 110ms;
+
+            &:hover {
+                background: #e5e5e5;
+                cursor: pointer;
+
+                .item__dropdown {
+                    display: block;
+                }
+
+                .item__link i {
+                    transform: rotate(180deg);
+                }
+            }
 
             .item__link {
                 font-size: 1rem;
-                font-weight: 300;
+                font-weight: 250;
                 line-height: 1.375em;
                 letter-spacing: 0;
                 color: #161616;
@@ -37,6 +51,53 @@
                 justify-content: center;
                 flex-direction: row;
                 flex-wrap: nowrap;
+                column-gap: 11px;
+
+                i {
+                    font-size: 1.2rem;
+                    transition: transform 110ms;
+                }
+            }
+
+            .item__dropdown {
+                display: none;
+                position: absolute;
+                top: calc(100% + 1px);
+                left: 0;
+                width: 100%;
+                background-color: #ffffff;
+                box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.3);
+                list-style: none;
+                row-gap: 1px;
+                padding: 0;
+
+                .dropdown__item {
+                    height: 48px;
+                    background-color: #f4f4f4;
+                    text-decoration: none;
+                    transition: background-color 110ms;
+
+                    &:not(:last-child) {
+                        border-bottom: 1px solid #e0e0e0
+                    }
+
+                    &:hover {
+                        background-color: #e0e0e0;
+                    }
+
+                    .item__link {
+                        font-size: 1rem;
+                        font-weight: 250;
+                        line-height: 1.375em;
+                        letter-spacing: 0;
+                        color: #161616;
+                        padding: 2px 18px;
+                        text-decoration: none;
+                        height: 100%;
+                        display: flex;
+                        justify-content: flex-start;
+                    }
+                }   
             }
         }
     }
