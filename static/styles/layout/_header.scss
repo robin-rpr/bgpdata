@@ -1,0 +1,23 @@
+#header {
+    border-bottom: 1px solid #e5e7eb;
+    height: 68px;
+    width: 100%;
+
+    .header__container {
+        max-width: 99rem;
+        margin-left: auto;
+        margin-right: auto;
+        height: 100%;
+        display: flex;
+        align-items: center;
+
+        .container__skip-to-content {
+            display: none;
+        }
+
+        .container__logo {
+            height: 35.5px;
+            padding: 0 40px;
+        }
+    }
+}

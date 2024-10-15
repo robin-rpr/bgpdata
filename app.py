@@ -40,7 +40,7 @@ app.config['SESSION_COOKIE_SECURE'] = ENVIRONMENT == 'production'
 
 # Initialize CORS
 cors_origin = [
-    'https://layer4.com',
+    'https://bgpdata.io',
     'http://localhost:5200'
 ]
 
@@ -76,6 +76,12 @@ if ENVIRONMENT == 'production':
             response.cache_control.no_cache = None
             response.cache_control.public = True
         return response
+    
+# Compile SCSS before each request in development mode
+if ENVIRONMENT == 'development':
+    @app.before_request
+    def before_request():
+        compile_scss()
 
 # Scheduler to have soft deleted or not onboarded users eventually purged from the system
 scheduler = BackgroundScheduler()
@@ -107,7 +113,7 @@ Authentication
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('pages/index.html')
 
 
 @app.route('/logout')
