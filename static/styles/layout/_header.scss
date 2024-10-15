@@ -10,6 +10,7 @@
         height: 100%;
         display: flex;
         align-items: center;
+        justify-content: space-between;
 
         .container__skip-to-content {
             display: none;
@@ -17,7 +18,21 @@
 
         .container__logo {
             height: 35.5px;
+            width: 262px;
+        }
+
+        .container__search {
+            flex-grow: 1;
+            max-width: 900px;
+            height: 100%;
+            background: #f1f2f4;
+            border-left: 1px solid #e5e7eb;
+            border-right: 1px solid #e5e7eb;
+        }
+
+        .container__profile {
             padding: 0 40px;
+            width: 262px;
         }
     }
 }
