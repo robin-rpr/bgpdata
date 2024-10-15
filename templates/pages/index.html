@@ -5,39 +5,41 @@ BGPDATA &mdash; {{ resource }}
 {% endblock %}
 
 {% block content %}
-<div id="content__index">
+<div class="content__index">
     <div class="index__hero">
-        <span class="hero__welcome-message"></span>
-        <h1 class="hero__heading">
-            Let’s troubleshoot.
-        </h1>
-        <div
-            class="hero__search"
-            role="search"
-        >
-            <i class="fa-sharp fa-light fa-magnifying-glass"></i>
-            <label
-                class="search__label"
-                for="searchbar"
-            >Search</label
-            ><input
-               
-                class="search__input"
-                type="text"
-                role="searchbox"
-                autocomplete="off"
-                id="searchbar"
-                placeholder="Search known issues, documentation and support forums"
-            />
-            <button
-                class="search__clear"
-                type="button"
-                aria-label="Clear search"
+        <div class="hero__container">
+            <span class="container__welcome-message"></span>
+            <h1 class="container__heading">
+                Let’s troubleshoot.
+            </h1>
+            <div
+                class="container__search"
+                role="search"
             >
-                <i class="fa-sharp fa-light fa-xmark"></i>
-            </button>
-        </div>
-        <div class="hero__cards">
+                <i class="fa-sharp fa-light fa-magnifying-glass"></i>
+                <label
+                    class="search__label"
+                    for="searchbar"
+                >Search</label
+                ><input
+                
+                    class="search__input"
+                    type="text"
+                    role="searchbox"
+                    autocomplete="off"
+                    id="searchbar"
+                    placeholder="Search known issues, documentation and support forums"
+                />
+                <button
+                    class="search__clear"
+                    type="button"
+                    aria-label="Clear search"
+                >
+                    <i class="fa-sharp fa-light fa-xmark"></i>
+                </button>
+            </div>
+            <div class="container__cards">
+            </div>
         </div>
     </div>
 </div>
