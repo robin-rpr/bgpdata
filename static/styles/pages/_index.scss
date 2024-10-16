@@ -209,6 +209,25 @@
                         }
                     }
                 }
+
+                .container__content {
+                    display: block;
+                    -webkit-box-flex: 0;
+                    -ms-flex: 0 0 75%;
+                    flex: 0 0 75%;
+                    max-width: 75%;
+                    width: 100%;
+                    padding-right: 1rem;
+                    padding-left: 1rem;
+
+                    .content__title {
+                        padding-bottom: 2rem;
+                        font-size: 1.75rem;
+                        font-weight: 400;
+                        line-height: 129%;
+                        letter-spacing: 0;
+                    }
+                }
             }
         }
     }
