@@ -1,0 +1,35 @@
+.content__as {
+    .as__hero {
+        background-color: #262626;
+
+        .hero__container {
+            margin-left: 12.5%;
+            display: block;
+            max-width: 75%;
+            flex: 0 0 75%;
+            padding: 2rem 1rem;
+            margin-bottom: 1rem;
+            width: 100%;
+
+            .container__heading {
+                font-weight: 100;
+                font-size: 3rem;
+                line-height: 1.125;
+                color: #fff;
+                margin-top: 0;
+                margin-bottom: 1rem;
+            }
+
+            .container__asn {
+                font-weight: 100;
+                font-size: 2rem;
+                line-height: 1.5;
+                color: #c6c6c6;
+            }
+
+            .container__website {
+
+            }
+        }
+    }
+}

@@ -19,6 +19,7 @@ from bson import ObjectId
 import urllib.parse
 import atexit
 import random
+import requests
 import sass  # type: ignore
 import pytz
 import os
@@ -114,6 +115,22 @@ Authentication
 @app.route('/')
 def index():
     return render_template('pages/index.html')
+
+
+@app.route('/as/<int:asn>')
+def asn(asn):
+    try:
+        url = f"https://stat.ripe.net/data/as-names/data.json?resource=AS{asn}"
+        response = requests.get(url, timeout=10)
+        data = response.json()
+
+        as_name = data['data']['names'].get(str(asn), "Unknown")
+
+    except Exception as e:
+        app.logger.error("Failed to retrieve AS%s: %s", str(asn), str(e))
+        return abort(500, description="An error occurred")
+
+    return render_template('pages/asn.html', asn=asn, as_name=as_name)
 
 
 @app.route('/logout')

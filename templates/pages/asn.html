@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+{% block title %}
+AS{{ asn }}
+{% endblock %}
+
+{% block content %}
+<div class="content__as">
+    <div class="as__hero">
+        <div class="hero__container">
+            <h1 class="container__heading">{{ as_name }}</h1>
+            <div class="container__asn">AS{{ asn }}</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
