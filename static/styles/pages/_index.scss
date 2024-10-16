@@ -342,4 +342,103 @@
             }
         }
     }
+
+    .index__contact-us {
+        padding-top: 2rem;
+        padding-bottom: 6rem;
+        background-color: #161616;
+
+        .contact-us__container {
+            display: flex;
+            flex-wrap: wrap;
+            padding-right: 2.5rem;
+            padding-left: 2.5rem;
+            margin-right: auto;
+            margin-left: auto;
+            max-width: 99rem;
+
+            .container__left-column {
+                width: 100%;
+                padding-right: 1rem;
+                padding-left: 1rem;
+                display: block;
+                flex: 0 0 18.75%;
+                max-width: 18.75%;
+
+                .left-column__heading {
+                    padding-top: 1rem;
+                    padding-bottom: 1.5rem;
+                    color: #f4f4f4;
+                    font-size: 2rem;
+                    font-weight: 250;
+                    line-height: 125%;
+                    letter-spacing: 0;
+                    margin: 0;
+                }
+
+                .left-column__subheading {
+                    font-size: 1rem;
+                    font-weight: 250;
+                    line-height: 1.5rem;
+                    letter-spacing: 0;
+                    color: #f4f4f4;
+                }
+            }
+
+            .container__right-column {
+                margin-left: 6.25%;
+                flex: 0 0 75%;
+                max-width: 75%;
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                grid-template-rows: 10rem;
+
+                .right-column__item {
+                    padding: 1.125rem;
+                    background-color: #393939;
+                    color: #f4f4f4;
+                    text-decoration: none;
+                    display: flex;
+                    height: 10rem;
+                    justify-content: space-between;
+                    cursor: pointer;
+
+                    &--colored {
+                        background: #204ff5;
+                    }
+
+                    &:not(:last-child) {
+                        border-right: 1px solid #6f6f6f;
+                    }
+
+                    .item__content {
+                        display: flex;
+                        flex-direction: column;
+                        justify-content: space-between;
+
+                        .content__title {
+                            font-size: 1.25rem;
+                            font-weight: 200;
+                            line-height: 115%;
+                            letter-spacing: 0;
+                        }
+    
+                        .content__description {
+                            color: #c6c6c6;
+                            max-width: 14rem;
+                            font-size: 1rem;
+                            font-weight: 200;
+                            line-height: 1.375rem;
+                            letter-spacing: 0;
+                        }
+                    }
+
+                    i {
+                        font-size: 1.35rem;
+                        color: inherit;
+                    }
+                }
+            }
+        }
+    }
 }
