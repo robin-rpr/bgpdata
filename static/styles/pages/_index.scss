@@ -34,7 +34,7 @@
 
             .container__search {
                 height: 4rem;
-                margin-bottom: 4rem;
+                margin-bottom: 4.5rem;
                 display: block;
                 flex: 0 0 83.33333%;
                 max-width: 83.33333%;
@@ -426,8 +426,24 @@
                     justify-content: space-between;
                     cursor: pointer;
 
+                    &:hover {
+                        background-color: #4c4c4c;
+                        text-decoration: none;
+                    }
+
+                    &:active {
+                        outline: 2px solid #204ff5;
+                        outline-offset: -2px;
+                        border: 3px solid #ffffff !important;
+                        padding: calc(1.125rem - 3px);
+                    }
+
                     &--colored {
                         background: #204ff5;
+
+                        &:hover {
+                            background-color: #2d59fb;
+                        }
                     }
 
                     &:not(:last-child) {
