@@ -25,7 +25,26 @@
         </div>
 
         <!-- Search -->
-        <div class="container__search"></div>
+        {% if request.path.startswith('/as/') or request.path.startswith('/prefix/') or request.path.startswith('/country/') or request.path.startswith('/range/') %}
+        <form
+            class="container__search"
+            role="search"
+        >
+            <i class="fa-sharp fa-light fa-magnifying-glass"></i>
+            <label
+                class="search__label"
+                for="searchbar"
+            >Search</label
+            ><input
+                class="search__input"
+                type="text"
+                role="searchbox"
+                autocomplete="off"
+                id="searchbar"
+                placeholder="Enter an IP address/prefix, ASN, country code or hostname"
+            />
+        </form>
+        {% endif %}
 
         <!-- Actions -->
         <div class="container__actions">

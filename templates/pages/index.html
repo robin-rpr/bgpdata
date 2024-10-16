@@ -29,12 +29,6 @@ BGPDATA
                     id="searchbar"
                     placeholder="Enter an IP address/prefix, ASN, country code or hostname"
                 />
-                <button
-                    class="search__clear"
-                    aria-label="Clear search"
-                >
-                    <i class="fa-sharp fa-light fa-xmark"></i>
-                </button>
                 <div class="search__quickstart">
                     <div class="quickstart__my">
                         Your network:
@@ -309,13 +303,8 @@ BGPDATA
         const content = document.getElementById("content");
         const form = content.querySelector(".container__search");
         const input = form.querySelector(".search__input");
-        const clear = form.querySelector(".search__clear");
 
         form.addEventListener("submit", handleSubmit);
-
-        clear.addEventListener("click", () => {
-            input.value = "";
-        });
 
         function handleSubmit(event) {
             event.preventDefault();
