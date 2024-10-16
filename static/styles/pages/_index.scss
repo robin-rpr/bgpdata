@@ -177,11 +177,14 @@
                 margin-left: -1rem;
 
                 .container__table-of-contents {
+                    position: sticky;
+                    z-index: var(--z-index-sticky);
+                    top: 4rem;
+                    height: fit-content;
                     list-style: none;
                     width: 100%;
                     padding-right: 1rem;
                     padding-left: 1rem;
-                    flex-shrink: 1;
                     display: block;
                     flex: 0 0 25%;
                     max-width: 25%;

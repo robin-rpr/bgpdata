@@ -2,6 +2,10 @@
     border-bottom: 1px solid #e0e0e0;
     height: 48px;
     width: 100%;
+    position: sticky;
+    background: #ffffff;
+    z-index: var(--z-index-sticky);
+    top: 0;
 
     .navigation__container {
         max-width: 99rem;

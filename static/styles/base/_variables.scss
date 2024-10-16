@@ -1,3 +1,8 @@
 :root {
-    --example: "Foobar";
+    --z-index-default: 1;
+    --z-index-sticky: 100000;
+    --z-index-modal: 200000;
+    --z-index-dropdown: 300000;
+    --z-index-tooltip: 400000;
+    --z-index-topmost: 500000;
 }
