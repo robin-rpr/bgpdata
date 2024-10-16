@@ -89,6 +89,7 @@
                     list-style: none;
                     row-gap: 1px;
                     padding: 0;
+                    z-index: var(--z-index-dropdown);
 
                     .dropdown__item {
                         height: 48px;
