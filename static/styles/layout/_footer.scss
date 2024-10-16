@@ -54,6 +54,32 @@
     }
 
     .footer__navigation {
+        padding-right: 2.5rem;
+        padding-left: 2.5rem;
+        border-top: 1px solid #525252;
+        margin-right: auto;
+        margin-left: auto;
+        max-width: 99rem;
 
+        .navigation__list {
+            display: flex;
+            width: 100%;
+            margin: 0;
+            padding: 1rem;
+            column-gap: 2rem;
+            list-style: none;
+            color: #c6c6c6;
+            font-weight: 200;
+
+            .list__link {
+                text-decoration: none;
+                color: inherit;
+
+                &:hover {
+                    color: #f4f4f4;
+                    text-decoration: underline;
+                }
+            }
+        }
     }
 }
