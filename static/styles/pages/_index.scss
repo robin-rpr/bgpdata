@@ -229,7 +229,8 @@
 
                     .content__section {
                         width: 100%;
-                        padding-bottom: 2rem;
+                        padding-bottom: 6rem;
+                        margin-bottom: 3rem;
 
                         &:not(:last-child) {
                             border-bottom: 1px solid #e0e0e0;
@@ -237,10 +238,12 @@
 
                         .section__title {
                             padding-bottom: 2rem;
+                            padding-top: 1.25rem;
                             font-size: 1.75rem;
                             font-weight: 300;
                             line-height: 129%;
                             letter-spacing: 0;
+                            margin: 0;
                         }
 
                         .section__grid {
