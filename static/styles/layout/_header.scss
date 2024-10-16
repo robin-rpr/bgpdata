@@ -1,6 +1,6 @@
 #header {
     border-bottom: 1px solid #e0e0e0;
-    height: 64px;
+    height: 4rem;
     width: 100%;
 
     .header__container {
@@ -41,9 +41,28 @@
             }
         }
 
-        .container__profile {
-            padding: 0 40px;
+        .container__actions {
+            display: flex;
+            justify-content: flex-end;
+            padding: 0 10px;
             width: 262px;
+
+            .actions__button {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 4rem;
+                height: 4rem;
+                background: transparent;
+                border: 0;
+                cursor: pointer;
+                font-size: 1.25rem;
+                transition: background 110ms;
+                
+                &:hover {
+                    background: #e0e0e0;
+                }
+            }
         }
     }
 }
