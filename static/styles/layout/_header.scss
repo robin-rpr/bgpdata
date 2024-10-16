@@ -1,6 +1,6 @@
 #header {
     border-bottom: 1px solid #e0e0e0;
-    height: 68px;
+    height: 64px;
     width: 100%;
 
     .header__container {
@@ -26,6 +26,19 @@
             max-width: 900px;
             height: 100%;
             background: #f4f4f4;
+            position: relative;
+            display: none;
+
+            &:after {
+                content: '';
+                display: block;
+                height: 2.5px;
+                width: 100%;
+                background: #204ff5;
+                position: absolute;
+                bottom: -1px;
+                left: 0;
+            }
         }
 
         .container__profile {

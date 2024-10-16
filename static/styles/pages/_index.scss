@@ -25,9 +25,10 @@
     
             .container__heading {
                 font-weight: 600;
-                line-height: 4.375rem;
+                line-height: 5rem;
                 letter-spacing: 0;
-                font-size: 3.75rem;
+                font-size: 3.5rem;
+                padding: 0 1rem;
             }
 
             .container__search {
@@ -45,7 +46,7 @@
                     position: absolute;
                     left: 17px;
                     top: 50%;
-                    font-size: 1.75rem;
+                    font-size: 1.625rem;
                     transform: translateY(-50%);
                 }
 
@@ -56,11 +57,12 @@
                 .search__input {
                     padding-left: 3.75rem;
                     padding-right: 3rem;
-                    font-size: 1.5rem;
+                    font-family: inherit;
+                    font-size: 1.33rem;
                     border: 0;
                     height: 100%;
                     width: 100%;
-                    font-weight: 100;
+                    font-weight: 200;
                     line-height: 1.375rem;
                     letter-spacing: 0;
                     outline: 2px solid transparent;
@@ -74,7 +76,84 @@
 
                     &::placeholder {
                         color: #525252;
-                        font-weight: 150;
+                    }
+
+                    &:focus {
+                        outline: 2px solid #204ff5;
+                        outline-offset: -2px;
+                    }
+                }
+
+                .search__clear { 
+                    display: none;
+                    position: absolute;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    background: transparent;
+                    border: 0;
+                    background: none;
+                    appearance: none;
+                    padding: 0;
+                    cursor: pointer;
+                    outline: 2px solid transparent;
+                    outline-offset: -2px;
+                    position: absolute;
+                    top: 0;
+                    right: 0;
+                }
+            }
+
+            .container__cards {
+                width: 100%;
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+
+                .cards__item {
+                    border: 1px solid #c6c6c6;
+                    display: flex;
+                    flex-direction: column;
+                    padding: 1rem;
+                    min-height: 10rem;
+                    height: 100%;
+                    justify-content: space-between;
+                    text-decoration: none;
+                    cursor: pointer;
+
+                    &:not(:last-child) {
+                        border-right: 0;
+                    }
+                    
+                    &:hover {
+                        background: #D0E1FF;
+                    }
+                    
+                    &:active {
+                        outline: 2px solid #204ff5;
+                        outline-offset: -2px;
+                    }
+
+                    .item__title {
+                        font-size: 1.125rem;
+                        font-weight: 600;
+                        line-height: 1.75rem;
+                        letter-spacing: 0;
+                        margin-bottom: 0.5rem;
+                        color: #161616;
+                    }
+
+                    .item__description {
+                        margin-bottom: 2rem;
+                        font-size: 1rem;
+                        font-weight: 400;
+                        line-height: 1.5em;
+                        letter-spacing: 0;
+                        width: 90%;
+                        max-width: 40rem;
+                    }
+
+                    i {
+                        font-size: 1.125rem;
+                        color: #204ff5;
                     }
                 }
             }
