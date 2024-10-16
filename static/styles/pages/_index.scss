@@ -145,7 +145,7 @@
                     .item__description {
                         margin-bottom: 2rem;
                         font-size: 1rem;
-                        font-weight: 300;
+                        font-weight: 250;
                         line-height: 1.5em;
                         letter-spacing: 0;
                         width: 90%;
@@ -227,12 +227,90 @@
                     padding-right: 1rem;
                     padding-left: 1rem;
 
-                    .content__title {
+                    .content__section {
+                        width: 100%;
                         padding-bottom: 2rem;
-                        font-size: 1.75rem;
-                        font-weight: 300;
-                        line-height: 129%;
-                        letter-spacing: 0;
+
+                        &:not(:last-child) {
+                            border-bottom: 1px solid #e0e0e0;
+                        }
+
+                        .section__title {
+                            padding-bottom: 2rem;
+                            font-size: 1.75rem;
+                            font-weight: 300;
+                            line-height: 129%;
+                            letter-spacing: 0;
+                        }
+
+                        .section__grid {
+                            width: 100%;
+                            display: grid;
+                            grid-template-columns: repeat(3, 1fr);
+                            gap: 16px;
+
+                            .grid__item {
+                                display: flex;
+                                flex-direction: column;
+                                padding: 1rem;
+                                min-height: 10rem;
+                                height: 100%;
+                                justify-content: space-between;
+                                background: #ffffff;
+
+                                &--dark {
+                                    background: #262626;
+
+                                    .item__eyebrow {
+                                        color: #c6c6c6;
+                                    }
+
+                                    .item__heading {
+                                        color: #f4f4f4;
+                                    }
+
+                                    .item__description {
+                                        color: #f4f4f4;
+                                    }
+
+                                    i {
+                                        color: #78a9ff !important;
+                                        font-size: 1.35rem !important;
+                                    }
+                                }
+
+                                .item__eyebrow {
+                                    font-weight: 450;
+                                    line-height: 1.5rem;
+                                    letter-spacing: 0;
+                                    margin-bottom: 0.5rem;
+                                }
+
+                                .item__heading {
+                                    margin-top: 0;
+                                    margin-bottom: 2rem;
+                                    font-size: 1.25rem;
+                                    font-weight: 200;
+                                    line-height: 140%;
+                                    letter-spacing: 0;
+                                }
+
+                                .item__description {
+                                    margin-bottom: 2rem;
+                                    font-size: 1rem;
+                                    font-weight: 250;
+                                    line-height: 1.5em;
+                                    letter-spacing: 0;
+                                    width: 95%;
+                                    max-width: 40rem;
+                                }
+
+                                i {
+                                    font-size: 2.75rem;
+                                    color: inherit;
+                                }
+                            }
+                        }
                     }
                 }
             }
