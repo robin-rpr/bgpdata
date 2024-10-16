@@ -5,6 +5,7 @@
         margin-right: auto;
         margin-left: auto;
         max-width: 99rem;
+        margin-bottom: 6rem;
 
         .hero__container {
             display: block;
@@ -144,7 +145,7 @@
                     .item__description {
                         margin-bottom: 2rem;
                         font-size: 1rem;
-                        font-weight: 400;
+                        font-weight: 300;
                         line-height: 1.5em;
                         letter-spacing: 0;
                         width: 90%;
@@ -155,6 +156,28 @@
                         font-size: 1.125rem;
                         color: #204ff5;
                     }
+                }
+            }
+        }
+    }
+
+    .index__content {
+        background: #f4f4f4;
+
+        .content__wrapper {
+            padding: 4rem 2.5rem;
+            margin-right: auto;
+            margin-left: auto;
+            max-width: 99rem;
+
+            .wrapper__container {
+                display: flex;
+                flex-wrap: wrap;
+                margin-right: -1rem;
+                margin-left: -1rem;
+
+                .container__table-of-contents {
+                    list-style: none;
                 }
             }
         }

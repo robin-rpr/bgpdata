@@ -55,7 +55,178 @@ BGPDATA &mdash; {{ resource }}
             </div>
         </div>
     </div>
+    <div class="index__content">
+        <div class="content__wrapper">
+            <div class="wrapper__container">
+                <ul
+                    class="container__table-of-contents"
+                    data-current-section="Popular resources"
+                >
+                    <li
+                        class="table-of-contents__item table-of-contents__item--active"
+                    >
+                        <a
+                            data-label="Popular resources"
+                            href="#popular-resources"
+                            aria-current="location"
+                            >Popular resources</a
+                        >
+                    </li>
+                    <li
+                        class="table-of-contents__item"
+                    >
+                        <a
+                            data-label="Documentation &amp; communities"
+                            href="#documentation-communities"
+                            >Documentation &amp; communities</a
+                        >
+                    </li>
+                    <li
+                        class="table-of-contents__item"
+                    >
+                        <a
+                            data-label="Downloads, fixes &amp; updates"
+                            href="#downloads-fixes-updates"
+                            >Downloads, fixes &amp; updates</a
+                        >
+                    </li>
+                    <li
+                        class="table-of-contents__item"
+                    >
+                        <a
+                            data-label="Support basics"
+                            href="#support-basics"
+                            >Support basics</a
+                        >
+                    </li>
+                    <li
+                        class="table-of-contents__item"
+                    >
+                        <a
+                            data-label="The fine print"
+                            href="#the-fine-print"
+                            >The fine print</a
+                        >
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
 </div>
 <script>
+    const searchbar = document.querySelector(".searchbar");
+    const form = searchbar.querySelector(".searchbar__form");
+    const input = form.querySelector(".form__input");
+    const clear = form.querySelector(".form__clear");
+    const submit = form.querySelector(".form__submit");
+
+    clear.addEventListener("click", () => {
+        input.value = "";
+    });
+
+    function handleSubmit(event) {
+        event.preventDefault();
+        const resource = input.value.trim();
+        if (resource !== "") {
+            window.location.href = `/resource/${resource}`;
+        }
+        return false;
+    }
+
+    submit.addEventListener("click", () => {
+        if (input.value.trim() !== "") {
+            form.submit();
+        }
+    });
+
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            form.submit();
+        }
+    });
+
+    // Experimental:
+    document.addEventListener('DOMContentLoaded', function() {
+        const navLinks = document.querySelectorAll('.navigation__link');
+        const contentWidgets = document.querySelector('.content__widgets');
+        const tabItems = document.querySelectorAll('.tabs__item');
+    
+        function updateActiveLink() {
+            const scrollPosition = window.scrollY;
+    
+            document.querySelectorAll('.widgets__item').forEach(item => {
+                const itemTop = item.offsetTop - 100; // Adjust offset as needed
+                const itemBottom = itemTop + item.offsetHeight;
+    
+                if (scrollPosition >= itemTop && scrollPosition < itemBottom) {
+                    const id = item.getAttribute('id');
+                    navLinks.forEach(link => {
+                        if (link.getAttribute('href') === `#${id}`) {
+                            link.classList.add('navigation__link--active');
+                        } else {
+                            link.classList.remove('navigation__link--active');
+                        }
+                    });
+                }
+            });
+        }
+    
+        function switchTab(tabName) {
+            tabItems.forEach(item => {
+                if (item.dataset.tab === tabName) {
+                    item.classList.add('tabs__item--active');
+                } else {
+                    item.classList.remove('tabs__item--active');
+                }
+            });
+    
+            // Update URL hash
+            window.location.hash = `tabId=${tabName}`;
+        }
+    
+        function getTabFromHash() {
+            const hash = window.location.hash.substring(1);
+            const params = new URLSearchParams(hash);
+            return params.get('tabId') || 'overview';
+        }
+    
+        function handleTabClick(e) {
+            const tabName = e.target.dataset.tab;
+            switchTab(tabName);
+        }
+    
+        tabItems.forEach(item => {
+            item.addEventListener('click', handleTabClick);
+        });
+    
+        navLinks.forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('href').substring(1);
+                const targetElement = document.getElementById(targetId);
+    
+                if (targetElement) {
+                    targetElement.scrollIntoView({ behavior: 'smooth' });
+                    updateActiveLink();
+                }
+            });
+        });
+    
+        // Update active link on scroll
+        window.addEventListener('scroll', updateActiveLink);
+    
+        // Initialize active link on page load
+        updateActiveLink();
+    
+        // Check URL hash and switch to the corresponding tab
+        const initialTab = getTabFromHash();
+        switchTab(initialTab);
+    
+        // Listen for hash changes
+        window.addEventListener('hashchange', function() {
+            const newTab = getTabFromHash();
+            switchTab(newTab);
+        });
+    });
 </script>
 {% endblock %}
