@@ -34,7 +34,7 @@
 
             .container__search {
                 height: 4rem;
-                margin-bottom: 3rem;
+                margin-bottom: 4rem;
                 display: block;
                 flex: 0 0 83.33333%;
                 max-width: 83.33333%;
@@ -108,10 +108,22 @@
                     justify-content: space-between;
                     position: absolute;
                     width: 100%;
-                    bottom: -35px;
+                    bottom: -2rem;
                     left: 0;
-                    font-size: 14px;
-                    color: #626262;
+                    font-size: 1rem;
+                    font-weight: 250;
+                    line-height: 1.375em;
+                    letter-spacing: 0;
+                    color: #161616;
+
+                    a {
+                        color: #204ff5;
+                        text-decoration: none;
+
+                        &:hover {
+                            text-decoration: underline;
+                        }
+                    }
                 }
             }
 

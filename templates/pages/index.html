@@ -38,14 +38,17 @@ BGPDATA &mdash; {{ resource }}
                     <i class="fa-sharp fa-light fa-xmark"></i>
                 </button>
                 <div class="search__quickstart">
-                    <div class="quickstart__container">
+                    <div class="quickstart__my">
                         Your network:
-                        <a id="my-asn" href="#"></a>,
-                        <a id="my-prefix" href="#"></a>
+                        <a class="my__asn" href="#">&nbsp;</a>,
+                        <a class="my__prefix" href="#">&nbsp;</a>
                     </div>
-                    <div class="quickstart__container">
-                        Try one of these: <a href="#">IPv4 Prefix</a>,
-                        <a id="random-ipv4range" href="#">IPv4 Range</a>, <a id="random-ipv6" href="#">IPv6</a>, <a id="random-asn" href="#">ASN</a>
+                    <div class="quickstart__random">
+                        Try one of these:
+                        <a class="random__ipv4prefix" href="#">IPv4 Prefix</a>,
+                        <a class="random__ipv4range" href="#">IPv4 Range</a>,
+                        <a class="random__ipv6" href="#">IPv6</a>,
+                        <a class="random__asn" href="#">ASN</a>
                     </div>
                 </div>
             </form>
@@ -303,7 +306,44 @@ BGPDATA &mdash; {{ resource }}
     </div>
 </div>
 <script>
+    const ip = await getIPAddress();
+    const asn = await getASNInfo(ip.value);
+
+    /**
+     * Gets the public IP address.
+     * @returns {Promise<string>} A promise that resolves to the public IP address.
+     * @throws {Error} If no public IP address is found.
+     */
+    async function getIPAddress(): Promise<string> {
+        const response = await api.get(`https://stat.ripe.net/data/whats-my-ip/data.json`);
+        return response.data.data.ip;
+    }
+    
+    /**
+     * Fetches the ASN information based on the IP address.
+     * @param {string} ip - The IP address.
+     * @returns {Promise<Record<string, any>>} ASN details.
+     * @throws {Error} If the request fails.
+     */
+    async function getASNInfo(ip: string): Promise<Record<string, any>> {
+        const response = await api.get(`https://stat.ripe.net/data/network-info/data.json?resource=${ip}`);
+        return response.data.data;
+    }
+    
+    /**
+     * Fetches the Whois information based on the IP address.
+     * @param {string} ip - The IP address.
+     * @returns {Promise<Record<string, any>>} Whois details.
+     * @throws {Error} If the request fails.
+     */
+    async function getWhois(ip: string): Promise<Record<string, any>> {
+        const response = await api.get(`https://stat.ripe.net/data/whois/data.json?resource=${ip}`);
+        return response.data.data;
+    }
+  
+
     document.addEventListener('DOMContentLoaded', function() {
+        /* Search */
         const form = document.querySelector(".container__search");
         const input = form.querySelector(".search__input");
         const clear = form.querySelector(".search__clear");
@@ -326,6 +366,29 @@ BGPDATA &mdash; {{ resource }}
                 form.submit();
             }
         });
+
+        /* Quickstart */
+        const quickstart = form.querySelector(".search__quickstart");
+        const myAsn = quickstart.querySelector(".my__asn");
+        const myPrefix = quickstart.querySelector(".my__prefix");
+        const randomIpv4Prefix = quickstart.querySelector(".random__ipv4prefix");
+        const randomIpv4Range = quickstart.querySelector(".random__ipv4range");
+        const randomIpv6 = quickstart.querySelector(".random__ipv6");
+        const randomAsn = quickstart.querySelector(".random__asn");
+
+        myAsn.innerText = asn.asn;
+        myAsn.href = `/asn/${asn.asn}`;
+        myPrefix.innerText = asn.prefix;
+        myPrefix.href = `/prefix/${asn.prefix}`;
+
+        randomIpv4Prefix.innerText = asn.prefix;
+        randomIpv4Prefix.href = `/prefix/${asn.prefix}`;
+        randomIpv4Range.innerText = asn.prefix;
+        randomIpv4Range.href = `/range/${asn.prefix}`;
+        randomIpv6.innerText = asn.prefix;
+        randomIpv6.href = `/ipv6/${asn.prefix}`;
+        randomAsn.innerText = asn.asn;
+        randomAsn.href = `/asn/${asn.asn}`;
 
         // Experimental:
         document.addEventListener('DOMContentLoaded', function() {
