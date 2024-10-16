@@ -257,6 +257,19 @@
                                 height: 100%;
                                 justify-content: space-between;
                                 background: #ffffff;
+                                cursor: pointer;
+
+                                &:hover {
+                                    background-color: #353535;
+                                    text-decoration: none;
+                                }
+
+                                &:active {
+                                    outline: 2px solid #204ff5;
+                                    outline-offset: -2px;
+                                    border: 3px solid #ffffff;
+                                    padding: calc(1rem - 3px);
+                                }
 
                                 &--dark {
                                     background: #262626;
