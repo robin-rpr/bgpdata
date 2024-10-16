@@ -12,9 +12,10 @@ BGPDATA &mdash; {{ resource }}
             <h1 class="container__heading">
                 Explore the Internet
             </h1>
-            <div
+            <form
                 class="container__search"
                 role="search"
+                onsubmit="return handleSubmit(event)"
             >
                 <i class="fa-sharp fa-light fa-magnifying-glass"></i>
                 <label
@@ -36,7 +37,18 @@ BGPDATA &mdash; {{ resource }}
                 >
                     <i class="fa-sharp fa-light fa-xmark"></i>
                 </button>
-            </div>
+                <div class="search__quickstart">
+                    <div class="quickstart__container">
+                        Your network:
+                        <a id="my-asn" href="#"></a>,
+                        <a id="my-prefix" href="#"></a>
+                    </div>
+                    <div class="quickstart__container">
+                        Try one of these: <a href="#">IPv4 Prefix</a>,
+                        <a id="random-ipv4range" href="#">IPv4 Range</a>, <a id="random-ipv6" href="#">IPv6</a>, <a id="random-asn" href="#">ASN</a>
+                    </div>
+                </div>
+            </form>
             <div class="container__cards">
                 <a class="cards__item">
                     <div class="item__title">View your cases</div>
@@ -291,118 +303,112 @@ BGPDATA &mdash; {{ resource }}
     </div>
 </div>
 <script>
-    const searchbar = document.querySelector(".searchbar");
-    const form = searchbar.querySelector(".searchbar__form");
-    const input = form.querySelector(".form__input");
-    const clear = form.querySelector(".form__clear");
-    const submit = form.querySelector(".form__submit");
-
-    clear.addEventListener("click", () => {
-        input.value = "";
-    });
-
-    function handleSubmit(event) {
-        event.preventDefault();
-        const resource = input.value.trim();
-        if (resource !== "") {
-            window.location.href = `/resource/${resource}`;
-        }
-        return false;
-    }
-
-    submit.addEventListener("click", () => {
-        if (input.value.trim() !== "") {
-            form.submit();
-        }
-    });
-
-    input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-            form.submit();
-        }
-    });
-
-    // Experimental:
     document.addEventListener('DOMContentLoaded', function() {
-        const navLinks = document.querySelectorAll('.navigation__link');
-        const contentWidgets = document.querySelector('.content__widgets');
-        const tabItems = document.querySelectorAll('.tabs__item');
-    
-        function updateActiveLink() {
-            const scrollPosition = window.scrollY;
-    
-            document.querySelectorAll('.widgets__item').forEach(item => {
-                const itemTop = item.offsetTop - 100; // Adjust offset as needed
-                const itemBottom = itemTop + item.offsetHeight;
-    
-                if (scrollPosition >= itemTop && scrollPosition < itemBottom) {
-                    const id = item.getAttribute('id');
-                    navLinks.forEach(link => {
-                        if (link.getAttribute('href') === `#${id}`) {
-                            link.classList.add('navigation__link--active');
-                        } else {
-                            link.classList.remove('navigation__link--active');
-                        }
-                    });
-                }
-            });
+        const form = document.querySelector(".container__search");
+        const input = form.querySelector(".search__input");
+        const clear = form.querySelector(".search__clear");
+
+        clear.addEventListener("click", () => {
+            input.value = "";
+        });
+
+        function handleSubmit(event) {
+            event.preventDefault();
+            const resource = input.value.trim();
+            if (resource !== "") {
+                window.location.href = `/asn/${resource}`;
+            }
+            return false;
         }
-    
-        function switchTab(tabName) {
+
+        input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                form.submit();
+            }
+        });
+
+        // Experimental:
+        document.addEventListener('DOMContentLoaded', function() {
+            const navLinks = document.querySelectorAll('.navigation__link');
+            const contentWidgets = document.querySelector('.content__widgets');
+            const tabItems = document.querySelectorAll('.tabs__item');
+        
+            function updateActiveLink() {
+                const scrollPosition = window.scrollY;
+        
+                document.querySelectorAll('.widgets__item').forEach(item => {
+                    const itemTop = item.offsetTop - 100; // Adjust offset as needed
+                    const itemBottom = itemTop + item.offsetHeight;
+        
+                    if (scrollPosition >= itemTop && scrollPosition < itemBottom) {
+                        const id = item.getAttribute('id');
+                        navLinks.forEach(link => {
+                            if (link.getAttribute('href') === `#${id}`) {
+                                link.classList.add('navigation__link--active');
+                            } else {
+                                link.classList.remove('navigation__link--active');
+                            }
+                        });
+                    }
+                });
+            }
+        
+            function switchTab(tabName) {
+                tabItems.forEach(item => {
+                    if (item.dataset.tab === tabName) {
+                        item.classList.add('tabs__item--active');
+                    } else {
+                        item.classList.remove('tabs__item--active');
+                    }
+                });
+        
+                // Update URL hash
+                window.location.hash = `tabId=${tabName}`;
+            }
+        
+            function getTabFromHash() {
+                const hash = window.location.hash.substring(1);
+                const params = new URLSearchParams(hash);
+                return params.get('tabId') || 'overview';
+            }
+        
+            function handleTabClick(e) {
+                const tabName = e.target.dataset.tab;
+                switchTab(tabName);
+            }
+        
             tabItems.forEach(item => {
-                if (item.dataset.tab === tabName) {
-                    item.classList.add('tabs__item--active');
-                } else {
-                    item.classList.remove('tabs__item--active');
-                }
+                item.addEventListener('click', handleTabClick);
             });
-    
-            // Update URL hash
-            window.location.hash = `tabId=${tabName}`;
-        }
-    
-        function getTabFromHash() {
-            const hash = window.location.hash.substring(1);
-            const params = new URLSearchParams(hash);
-            return params.get('tabId') || 'overview';
-        }
-    
-        function handleTabClick(e) {
-            const tabName = e.target.dataset.tab;
-            switchTab(tabName);
-        }
-    
-        tabItems.forEach(item => {
-            item.addEventListener('click', handleTabClick);
-        });
-    
-        navLinks.forEach(link => {
-            link.addEventListener('click', function(e) {
-                e.preventDefault();
-                const targetId = this.getAttribute('href').substring(1);
-                const targetElement = document.getElementById(targetId);
-    
-                if (targetElement) {
-                    targetElement.scrollIntoView({ behavior: 'smooth' });
-                    updateActiveLink();
-                }
+        
+            navLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const targetId = this.getAttribute('href').substring(1);
+                    const targetElement = document.getElementById(targetId);
+        
+                    if (targetElement) {
+                        targetElement.scrollIntoView({ behavior: 'smooth' });
+                        updateActiveLink();
+                    }
+                });
             });
-        });
-    
-        // Update active link on scroll
-        window.addEventListener('scroll', updateActiveLink);
-    
-        // Initialize active link on page load
-        updateActiveLink();
-    
-        // Check URL hash and switch to the corresponding tab
-        const initialTab = getTabFromHash();
-        switchTab(initialTab);
-    
-        // Listen for hash changes
-        window.addEventListener('hashchange', function() {
-            const newTab = getTabFromHash();
-            switchTab(newTab);
+        
+            // Update active link on scroll
+            window.addEventListener('scroll', updateActiveLink);
+        
+            // Initialize active link on page load
+            updateActiveLink();
+        
+            // Check URL hash and switch to the corresponding tab
+            const initialTab = getTabFromHash();
+            switchTab(initialTab);
+        
+            // Listen for hash changes
+            window.addEventListener('hashchange', function() {
+                const newTab = getTabFromHash();
+                switchTab(newTab);
+            });
         });
     });
 </script>

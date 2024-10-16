@@ -102,6 +102,17 @@
                     top: 0;
                     right: 0;
                 }
+
+                .search__quickstart {
+                    display: flex;
+                    justify-content: space-between;
+                    position: absolute;
+                    width: 100%;
+                    bottom: -35px;
+                    left: 0;
+                    font-size: 14px;
+                    color: #626262;
+                }
             }
 
             .container__cards {
