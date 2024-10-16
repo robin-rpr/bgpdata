@@ -15,7 +15,6 @@ BGPDATA &mdash; {{ resource }}
             <form
                 class="container__search"
                 role="search"
-                onsubmit="return handleSubmit(event)"
             >
                 <i class="fa-sharp fa-light fa-magnifying-glass"></i>
                 <label
@@ -76,47 +75,42 @@ BGPDATA &mdash; {{ resource }}
                     class="container__table-of-contents"
                     data-current-section="Popular resources"
                 >
-                    <li
-                        class="table-of-contents__item table-of-contents__item--active"
-                    >
+                    <li>
                         <a
+                            class="table-of-contents__item table-of-contents__item--active"
                             data-label="Popular resources"
                             href="#popular-resources"
                             aria-current="location"
                             >Popular resources</a
                         >
                     </li>
-                    <li
-                        class="table-of-contents__item"
-                    >
+                    <li>
                         <a
+                            class="table-of-contents__item"
                             data-label="Documentation &amp; communities"
                             href="#documentation-communities"
                             >Documentation &amp; communities</a
                         >
                     </li>
-                    <li
-                        class="table-of-contents__item"
-                    >
+                    <li>
                         <a
+                            class="table-of-contents__item"
                             data-label="Downloads, fixes &amp; updates"
                             href="#downloads-fixes-updates"
                             >Downloads, fixes &amp; updates</a
                         >
                     </li>
-                    <li
-                        class="table-of-contents__item"
-                    >
+                    <li>
                         <a
+                            class="table-of-contents__item"
                             data-label="Support basics"
                             href="#support-basics"
                             >Support basics</a
                         >
                     </li>
-                    <li
-                        class="table-of-contents__item"
-                    >
+                    <li>
                         <a
+                            class="table-of-contents__item"
                             data-label="The fine print"
                             href="#the-fine-print"
                             >The fine print</a
@@ -125,7 +119,7 @@ BGPDATA &mdash; {{ resource }}
                 </ul>
                 <div class="container__content">
                     <section class="content__section">
-                        <h2 class="section__title">Popular resources</h2>
+                        <h2 class="section__title" id="popular-resources">Popular resources</h2>
                         <div class="section__grid">
                             <a class="grid__item grid__item--dark">
                                 <div class="item__eyebrow">
@@ -202,7 +196,7 @@ BGPDATA &mdash; {{ resource }}
                         </div>
                     </section>
                     <section class="content__section">
-                        <h2 class="section__title">Documentation & communities</h2>
+                        <h2 class="section__title" id="documentation-communities">Documentation & communities</h2>
                         <div class="section__grid section__grid--small-gap">
                             <a class="grid__item">
                                 <div class="item__eyebrow">
@@ -317,6 +311,8 @@ BGPDATA &mdash; {{ resource }}
         const input = form.querySelector(".search__input");
         const clear = form.querySelector(".search__clear");
 
+        form.addEventListener("submit", handleSubmit);
+
         clear.addEventListener("click", () => {
             input.value = "";
         });
@@ -359,89 +355,48 @@ BGPDATA &mdash; {{ resource }}
         randomIpv6.href = `/prefix/${prefix}`;
         randomAsn.href = `/as/${asn}`;
 
-        // Experimental:
-        document.addEventListener('DOMContentLoaded', function() {
-            const navLinks = document.querySelectorAll('.navigation__link');
-            const contentWidgets = document.querySelector('.content__widgets');
-            const tabItems = document.querySelectorAll('.tabs__item');
-        
-            function updateActiveLink() {
-                const scrollPosition = window.scrollY;
-        
-                document.querySelectorAll('.widgets__item').forEach(item => {
-                    const itemTop = item.offsetTop - 100; // Adjust offset as needed
-                    const itemBottom = itemTop + item.offsetHeight;
-        
-                    if (scrollPosition >= itemTop && scrollPosition < itemBottom) {
-                        const id = item.getAttribute('id');
-                        navLinks.forEach(link => {
-                            if (link.getAttribute('href') === `#${id}`) {
-                                link.classList.add('navigation__link--active');
-                            } else {
-                                link.classList.remove('navigation__link--active');
-                            }
-                        });
-                    }
-                });
-            }
-        
-            function switchTab(tabName) {
-                tabItems.forEach(item => {
-                    if (item.dataset.tab === tabName) {
-                        item.classList.add('tabs__item--active');
-                    } else {
-                        item.classList.remove('tabs__item--active');
-                    }
-                });
-        
-                // Update URL hash
-                window.location.hash = `tabId=${tabName}`;
-            }
-        
-            function getTabFromHash() {
-                const hash = window.location.hash.substring(1);
-                const params = new URLSearchParams(hash);
-                return params.get('tabId') || 'overview';
-            }
-        
-            function handleTabClick(e) {
-                const tabName = e.target.dataset.tab;
-                switchTab(tabName);
-            }
-        
-            tabItems.forEach(item => {
-                item.addEventListener('click', handleTabClick);
+        /* Table of Contents */
+        const navLinks = content.querySelectorAll('.table-of-contents__item');
+    
+        function updateActiveLink() {
+            const scrollPosition = window.scrollY;
+    
+            content.querySelectorAll('.section__title').forEach(item => {
+                const itemTop = item.offsetTop - 100; // Adjust offset as needed
+                const itemBottom = itemTop + item.offsetHeight;
+    
+                if (scrollPosition >= itemTop && scrollPosition < itemBottom) {
+                    const id = item.getAttribute('id');
+                    navLinks.forEach(link => {
+                        if (link.getAttribute('href') === `#${id}`) {
+                            link.classList.add('table-of-contents__item--active');
+                        } else {
+                            link.classList.remove('table-of-contents__item--active');
+                        }
+                    });
+                }
             });
-        
-            navLinks.forEach(link => {
-                link.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const targetId = this.getAttribute('href').substring(1);
-                    const targetElement = document.getElementById(targetId);
-        
-                    if (targetElement) {
-                        targetElement.scrollIntoView({ behavior: 'smooth' });
-                        updateActiveLink();
-                    }
-                });
-            });
-        
-            // Update active link on scroll
-            window.addEventListener('scroll', updateActiveLink);
-        
-            // Initialize active link on page load
-            updateActiveLink();
-        
-            // Check URL hash and switch to the corresponding tab
-            const initialTab = getTabFromHash();
-            switchTab(initialTab);
-        
-            // Listen for hash changes
-            window.addEventListener('hashchange', function() {
-                const newTab = getTabFromHash();
-                switchTab(newTab);
+        }
+    
+        navLinks.forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                console.log(this.getAttribute('href'))
+                const targetId = this.getAttribute('href').substring(1);
+                const targetElement = document.getElementById(targetId);
+    
+                if (targetElement) {
+                    targetElement.scrollIntoView({ behavior: 'smooth' });
+                    updateActiveLink();
+                }
             });
         });
+    
+        // Update active link on scroll
+        window.addEventListener('scroll', updateActiveLink);
+    
+        // Initialize active link on page load
+        updateActiveLink();
     });
 </script>
 {% endblock %}
