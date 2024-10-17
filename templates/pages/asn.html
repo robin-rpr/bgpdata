@@ -17,15 +17,26 @@ AS{{ asn }}
             Test 1234
         </div>
         <div class="content__right-column">
-            <div class="right-column__edit">
-                <span class="edit__title">Is this information correct?</span>
-                <button class="edit__button">Edit</button>
+            <div class="right-column__manage">
+                <span class="manage__title">Manage</span>
+                <div class="manage__actions">
+                    <button class="actions__button">
+                        Edit
+                    </button>
+                    <button class="actions__button">
+                        Notifications
+                    </button>
+                </div>
             </div>
             <div class="right-column__details">
                 <span class="details__title">Network Information</span>
                 <div class="details__section">
                     <span class="section__title">Registered on</span>
                     <span class="section__value">13 Jul 2000 (24 years old)</span>
+                </div>
+                <div class="details__section">
+                    <span class="section__title">Website</span>
+                    <a class="section__value" href="https://www.example.com" target="_blank">https://www.example.com</a>
                 </div>
                 <div class="details__section">
                     <span class="section__title">Network type</span>
@@ -41,7 +52,7 @@ AS{{ asn }}
                 </div>
             </div>
             <div class="right-column__action">
-                <span class="action__title">Manage My Notification Subscriptions</span>
+                <span class="action__label">Manage My Notification Subscriptions <i class="fa-sharp fa-light fa-circle-info"></i></span>
                 <button class="action__button">Log in to Subscribe</button>
             </div>
         </div>

@@ -33,6 +33,7 @@
         flex-direction: row;
         margin-left: 12.5%;
         max-width: 87.5%;
+        min-height: 800px;
         
         .content__left-column {
             flex-grow: 1;
@@ -45,27 +46,53 @@
             background: #F4F4F4;
             display: flex;
             flex-direction: column;
-            padding-top: 5rem;
+            padding-top: 3rem;
             padding-left: 1rem;
             padding-right: 5rem;
             padding-bottom: 1rem;
-            gap: 1rem;
 
-            .right-column__edit {
+            .right-column__manage {
                 padding: 1.25rem;
                 display: flex;
                 flex-direction: column;
-                gap: 1rem;
+                gap: 1.25rem;
 
-                .edit__title {
-                    font-weight: 600;
+                .manage__title {
+                    font-weight: 500;
                     font-size: 1.25rem;
                     line-height: 1.5625rem;
-                    padding-bottom: 0.938rem;
                 }
 
-                .edit__button {
+                .manage__actions {
+                    display: flex;
+                    flex-direction: row;
+                    column-gap: 1rem;
 
+                    .actions__button {
+                        height: 42px;
+                        padding: 0 1.5rem;
+                        border-width: 1px;
+                        border-style: solid;
+                        border-color: #0f62fe;
+                        background-color: transparent;
+                        color: #0f62fe;
+                        font-size: .9rem;
+                        font-weight: 300;
+                        line-height: 1.28572;
+                        letter-spacing: .16px;
+                        display: flex;
+                        column-gap: 14px;
+                        flex-direction: row;
+                        justify-content: space-between;
+                        align-items: center;
+                        cursor: pointer;
+                        transition: background 70ms cubic-bezier(0, 0, .38, .9);
+
+                        &:hover {
+                            background: #0f62fe;
+                            color: #ffffff;
+                        }
+                    }
                 }
             }
 
@@ -76,26 +103,65 @@
                 gap: 1rem;
 
                 .details__title {
-
+                    font-weight: 500;
+                    font-size: 1.25rem;
+                    line-height: 1.5625rem;
                 }
 
                 .details__section {
                     display: flex;
                     flex-direction: column;
-                    gap: 1rem;
+                    font-size: 1rem;
+                    line-height: 1.625rem;
+                    gap: 2.5px;
 
                     .section__title {
-
+                        font-weight: 500;
                     }
 
                     .section__value {
+                        font-weight: 250;
 
+                        &:is(a) {
+                            color: #204ff5;
+                            text-decoration: none;
+    
+                            &:hover {
+                                text-decoration: underline;
+                            }
+                        }
+                    }
+                }
+            }
+
+            .right-column__action {
+                margin-top: auto;
+                border-top: 1px solid gray;
+                padding: 1.25rem;
+                display: flex;
+                font-size: 1rem;
+                flex-direction: column;
+                gap: 1.25rem;
+
+                .action__label {
+                    i {
+                        color: #525252;
                     }
                 }
 
-                .details__action {
-                    border-top: 1px solid gray;
-
+                .action__button {
+                    border-width: 1px;
+                    border-style: solid;
+                    border-color: transparent;
+                    background-color: #393939;
+                    color: #fff;
+                    font-size: .875rem;
+                    font-weight: 400;
+                    line-height: 1.28572;
+                    letter-spacing: .16px;
+                    display: inline-flex;
+                    max-width: 20rem;
+                    min-height: 3rem;
                 }
             }
         }
