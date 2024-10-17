@@ -137,31 +137,40 @@
             .right-column__action {
                 margin-top: auto;
                 border-top: 1px solid gray;
-                padding: 1.25rem;
+                padding: 2rem 1.25rem;
                 display: flex;
                 font-size: 1rem;
                 flex-direction: column;
                 gap: 1.25rem;
 
                 .action__label {
+                    font-weight: 200;
+                    line-height: 1.4;
+
                     i {
                         color: #525252;
                     }
                 }
 
                 .action__button {
-                    border-width: 1px;
-                    border-style: solid;
-                    border-color: transparent;
-                    background-color: #393939;
+                    width: 200px;
+                    padding: 0 1.5rem;
+                    border: 0;
+                    background: #393939;
                     color: #fff;
-                    font-size: .875rem;
-                    font-weight: 400;
+                    display: flex;
+                    align-items: center;
+                    font-size: .9rem;
+                    font-weight: 300;
                     line-height: 1.28572;
                     letter-spacing: .16px;
-                    display: inline-flex;
                     max-width: 20rem;
                     min-height: 3rem;
+                    cursor: pointer;
+
+                    &:hover {
+                        background: #4c4c4c;
+                    }
                 }
             }
         }
