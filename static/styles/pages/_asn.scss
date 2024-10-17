@@ -5,14 +5,13 @@
         .hero__container {
             margin-left: 12.5%;
             display: block;
-            max-width: 75%;
-            flex: 0 0 75%;
-            padding: 3rem 1rem;
-            margin-bottom: 1rem;
+            max-width: 72%;
+            flex: 0 0 72%;
+            padding: 3rem 0;
             width: 100%;
 
             .container__heading {
-                font-weight: 150;
+                font-weight: 100;
                 font-size: 3rem;
                 line-height: 1.125;
                 color: #fff;
@@ -25,10 +24,81 @@
                 font-size: 2rem;
                 line-height: 1.5;
                 color: #c6c6c6;
-                background: #161616;
-                padding: 0.5rem 1.5rem;
-                width: fit-content;
             }
         }
+    }
+
+    .as__content {
+        display: flex;
+        flex-direction: row;
+        margin-left: 12.5%;
+        max-width: 87.5%;
+        
+        .content__left-column {
+            flex-grow: 1;
+            padding-top: 1.25rem;
+        }
+
+        .content__right-column {
+            flex-shrink: 0;
+            width: 385px;
+            background: #F4F4F4;
+            display: flex;
+            flex-direction: column;
+            padding-top: 5rem;
+            padding-left: 1rem;
+            padding-right: 5rem;
+            padding-bottom: 1rem;
+            gap: 1rem;
+
+            .right-column__edit {
+                padding: 1.25rem;
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+
+                .edit__title {
+                    font-weight: 600;
+                    font-size: 1.25rem;
+                    line-height: 1.5625rem;
+                    padding-bottom: 0.938rem;
+                }
+
+                .edit__button {
+
+                }
+            }
+
+            .right-column__details {
+                padding: 1.25rem;
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+
+                .details__title {
+
+                }
+
+                .details__section {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 1rem;
+
+                    .section__title {
+
+                    }
+
+                    .section__value {
+
+                    }
+                }
+
+                .details__action {
+                    border-top: 1px solid gray;
+
+                }
+            }
+        }
+
     }
 }
