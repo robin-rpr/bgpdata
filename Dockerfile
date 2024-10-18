@@ -1,4 +1,3 @@
-# Use the official Python image from the Docker Hub
 FROM python:3.6
 
 # Set the working directory in the container
@@ -14,7 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Define environment variables with default values
-ENV MONGODB_URI=mongodb://mongo:27017/
+ENV POSTGRESQL_DATABASE=postgresql://postgres:5432/default
+ENV TIMESCALE_DATABASE=postgresql://timescale:5432/default
 ENV POSTMARK_API_KEY=your-postmark-api-key
 ENV FLASK_SECRET_KEY=your-flask-secret-key
 ENV FLASK_HOST=https://fombook.com
@@ -22,13 +22,6 @@ ENV FLASK_ENV=production
 ENV FLASK_DEBUG=0
 ENV FLASK_APP=app.py
 ENV FLASK_RUN_PORT=80
-
-# Make port 80 available to the world outside this container
-EXPOSE 80
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:80/ || exit 1
 
 # Command to run the application with Gunicorn
 CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:80", "app:app"]

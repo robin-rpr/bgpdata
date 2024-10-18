@@ -1,6 +1,5 @@
 flask
 Flask-Compress==1.9.0
-pymongo[srv]
 postmarker
 APScheduler
 gunicorn
@@ -8,6 +7,10 @@ flask-cors
 flask-talisman
 alt-profanity-check
 libsass
+sqlalchemy[asyncio]
+pybgpstream
+asyncpg
+alembic==1.7.7
 pytz
 bleach
 Cython>=0.29.24

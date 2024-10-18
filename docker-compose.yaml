@@ -1,24 +1,46 @@
-version: "3.8"
-
 services:
-    # MongoDB service
-    mongo:
-        image: mongo:latest
-        container_name: mongo
-        restart: always
+    # PostgreSQL service for your app
+    postgres:
+        image: postgres:13
+        container_name: postgres
+        environment:
+            POSTGRES_USER: user
+            POSTGRES_PASSWORD: password
+            POSTGRES_DB: default
         ports:
-            - "27017:27017"
+            - "5432:5432"
         volumes:
-            - mongo_data:/data/db
-            - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+            - pg_data:/var/lib/postgresql/data
+        restart: always
+
+    # TimescaleDB service for RIS Live data
+    timescale:
+        image: timescale/timescaledb:latest-pg13
+        container_name: timescale
+        environment:
+            POSTGRES_USER: user
+            POSTGRES_PASSWORD: password
+            POSTGRES_DB: default
+        ports:
+            - "5433:5432"
+        volumes:
+            - timescale_data:/var/lib/postgresql/data
+        restart: always
 
     # Flask application service
     web:
-        image: python:3.6
+        build: .
         container_name: web
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:80"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 40s
         restart: always
         environment:
-            - MONGODB_DATABASE=mongodb://mongo:27017/
+            - POSTGRESQL_DATABASE=postgresql://user:password@postgres:5432/default
+            - TIMESCALE_DATABASE=postgresql://user:password@timescale:5432/default
             - POSTMARK_API_KEY=your-postmark-api-key
             - FLASK_SECRET_KEY=your-flask-secret-key
             - FLASK_HOST=http://localhost:5200
@@ -29,13 +51,27 @@ services:
         ports:
             - "5200:5200"
         depends_on:
-            - mongo
+            - postgres
+            - timescale
         working_dir: /app
         volumes:
             - .:/app
-        command: >
-            sh -c "pip install --no-cache-dir -r requirements.txt && gunicorn --bind 0.0.0.0:5200 --reload --reload-extra-file=\"static/styles/main.scss\" app:app"
+        entrypoint: gunicorn --bind 0.0.0.0:5200 --reload app:app
+
+    # Independent data collector service for RIS Live data
+    bgp_collector:
+        build: .
+        container_name: bgp_collector
+        environment:
+            - TIMESCALE_DATABASE=postgresql://user:password@timescale:5432/default
+        depends_on:
+            - timescale
+        working_dir: /app
+        volumes:
+            - .:/app
+        entrypoint: python collectors/bgp.py
 
 # Define named volumes
 volumes:
-    mongo_data:
+    pg_data:
+    timescale_data:
