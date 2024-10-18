@@ -58,6 +58,8 @@ services:
             - "9092:9092"
         depends_on:
             - zookeeper
+        volumes:
+            - kafka_data:/var/lib/kafka/data
         restart: always
 
     # Flask application service
