@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
-from pybgpstream import BGPStream, BGPRecord
+from pybgpstream import BGPStream
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ def kafka_message_key(message):
 
 def bgpstream_format(collector, elem):
     """Format BGPStream elements into a dict format for Kafka."""
-    if elem.type == "R" or elem.type == "A":
+    if elem.type == "R" or elem.type == "A":  # 'R' is for Route, 'A' is for Announcement
         as_path = elem.fields["as-path"]
         if len(as_path) > 0:
             origins = elem.fields["as-path"].split()
@@ -29,7 +29,7 @@ def bgpstream_format(collector, elem):
                 "origins": origins,
                 "as_path": as_path
             }
-    elif elem.type == "W":
+    elif elem.type == "W":  # 'W' is for Withdrawal
         yield {
             "type": "W",
             "timestamp": elem.time,
@@ -54,13 +54,9 @@ def produce_to_kafka(producer, topic, messages):
 
 def iterate_stream(stream, collector):
     """Iterate over the BGPStream and yield formatted messages."""
-    rec = BGPRecord()
-    while stream.get_next_record(rec):
-        elem = rec.get_next_elem()
-        while elem:
-            for message in bgpstream_format(collector, elem):
-                yield message
-            elem = rec.get_next_elem()
+    for elem in stream:  # Directly iterate over the stream
+        for message in bgpstream_format(collector, elem):
+            yield message
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
@@ -71,24 +67,24 @@ if __name__ == "__main__":
     collector = os.getenv("BGP_COLLECTOR", "ris-live")
 
     # Initialize Kafka producer
-    producer = KafkaProducer(bootstrap_servers=kafka_servers.split(","))
+    producer = KafkaProducer(
+        bootstrap_servers=kafka_servers.split(","),
+        acks='all',  # Wait for all replicas to acknowledge
+        retries=5,  # Retry on failure
+        enable_idempotence=True  # Ensure exactly-once delivery
+    )
 
-    # Set up BGPStream for real-time streaming
-    stream = BGPStream()
+    # Set up BGPStream for real-time streaming without filters
+    stream = BGPStream(
+        project=collector  # Specify project (e.g., "ris-live")
+    )
 
-    # Filter by the desired project (e.g., RIS Live)
-    stream.add_filter('project', collector)
-
-    # Stream only real-time updates (no past RIBs, just current and future updates)
-    stream.add_filter('record-type', 'updates')
-
-    # Start the stream for real-time updates
-    stream.start()
-
+    # Process the stream and produce messages to Kafka
     count = 0
     for batch in iterate_stream(stream, collector):
         produce_to_kafka(producer, kafka_topic, [batch])
 
-        # Log progress
+        # Log progress every 5000 messages
         count += 1
-        logger.info(f"Processed {count} messages")
+        if count % 5000 == 0:
+            logger.info(f"Processed {count} messages")
