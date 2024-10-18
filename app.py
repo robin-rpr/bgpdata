@@ -3,7 +3,6 @@ from flask_compress import Compress
 from flask_cors import CORS
 from flask_talisman import Talisman
 from utils.postmark import postmark
-from utils.database import init_db, close_db
 from utils.transformers import time_ago, hash_text, format_text, sanitize_text
 from utils.validators import is_authenticated, is_onboarded, is_valid_email
 from utils.filters import find_author_by_id
@@ -11,7 +10,10 @@ from utils.generators import generate_verification_code
 from views.user import user_blueprint
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
-from bson import ObjectId
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from alembic.config import Config
+from alembic import command
 import urllib.parse
 import atexit
 import random
@@ -92,20 +94,6 @@ if ENVIRONMENT == 'development':
 
 # Shut down the scheduler when exiting the app
 #atexit.register(scheduler.shutdown)
-
-"""
-Database
-"""
-
-
-@app.on_event("startup")
-async def startup_event():
-    await init_db()
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    await close_db()
-
 
 """
 Jinja
@@ -365,4 +353,36 @@ def asn(asn):
 #app.register_blueprint(user_blueprint, url_prefix='/user')
 
 if __name__ == '__main__':
+    global postgres, timescale
+
+    # Perform Migrations
+    alembic_cfg = Config('alembic.ini')
+    alembic_cfg.set_section_option(
+        'postgres', 'sqlalchemy.url', os.getenv('POSTGRESQL_DATABASE'))
+    alembic_cfg.set_section_option(
+        'timescale', 'sqlalchemy.url', os.getenv('TIMESCALE_DATABASE'))
+    command.upgrade(alembic_cfg, 'head')
+
+    # Session Factories
+    PostgresSession = sessionmaker(
+        create_async_engine(
+            os.getenv('POSTGRESQL_DATABASE'), echo=ENVIRONMENT != 'production'
+        ), expire_on_commit=False, class_=AsyncSession
+    )
+
+    TimescaleSession = sessionmaker(
+        create_async_engine(
+            os.getenv('TIMESCALE_DATABASE'), echo=ENVIRONMENT != 'production'
+        ), expire_on_commit=False, class_=AsyncSession
+    )
+
+    # Open Sessions
+    postgres = PostgresSession()
+    timescale = TimescaleSession()
+
+    # Flask Application
     app.run()
+
+    # Close Session
+    postgres.close()
+    timescale.close()

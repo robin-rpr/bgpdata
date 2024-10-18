@@ -27,6 +27,32 @@ services:
             - timescale_data:/var/lib/postgresql/data
         restart: always
 
+    # Kafka Zookeeper (needed for Kafka)
+    zookeeper:
+        image: confluentinc/cp-zookeeper:7.0.1
+        container_name: zookeeper
+        environment:
+            ZOOKEEPER_CLIENT_PORT: 2181
+            ZOOKEEPER_TICK_TIME: 2000
+        ports:
+            - "2181:2181"
+        restart: always
+
+    # Kafka broker
+    kafka:
+        image: confluentinc/cp-kafka:7.0.1
+        container_name: kafka
+        environment:
+            KAFKA_BROKER_ID: 1
+            KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+        ports:
+            - "9092:9092"
+        depends_on:
+            - zookeeper
+        restart: always
+
     # Flask application service
     web:
         build: .
@@ -39,9 +65,11 @@ services:
             start_period: 40s
         restart: always
         environment:
-            - POSTGRESQL_DATABASE=postgresql://user:password@postgres:5432/default
-            - TIMESCALE_DATABASE=postgresql://user:password@timescale:5432/default
+            - POSTGRESQL_DATABASE=postgresql+asyncpg://user:password@postgres:5432/default
+            - TIMESCALE_DATABASE=postgresql+asyncpg://user:password@timescale:5432/default
             - POSTMARK_API_KEY=your-postmark-api-key
+            - KAFKA_SERVERS=kafka:9092
+            - KAFKA_TOPIC=bgp-updates
             - FLASK_SECRET_KEY=your-flask-secret-key
             - FLASK_HOST=http://localhost:5200
             - FLASK_ENV=development
@@ -63,9 +91,11 @@ services:
         build: .
         container_name: bgp_collector
         environment:
-            - TIMESCALE_DATABASE=postgresql://user:password@timescale:5432/default
+            - KAFKA_SERVERS=kafka:9092
+            - KAFKA_TOPIC=bgp-updates
+            - BGP_COLLECTOR=ris-live
         depends_on:
-            - timescale
+            - kafka
         working_dir: /app
         volumes:
             - .:/app
@@ -75,3 +105,4 @@ services:
 volumes:
     pg_data:
     timescale_data:
+    kafka_data:

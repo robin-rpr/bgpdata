@@ -5,7 +5,6 @@ APScheduler
 gunicorn
 flask-cors
 flask-talisman
-alt-profanity-check
 libsass
 sqlalchemy[asyncio]
 pybgpstream
@@ -13,5 +12,6 @@ asyncpg
 alembic==1.7.7
 pytz
 bleach
+kafka-python
 Cython>=0.29.24
 numpy==1.19.5
