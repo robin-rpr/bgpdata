@@ -42,6 +42,12 @@ services:
     kafka:
         image: confluentinc/cp-kafka:7.0.1
         container_name: kafka
+        healthcheck:
+            test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka:9092 --list"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 40s
         environment:
             KAFKA_BROKER_ID: 1
             KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -96,7 +102,8 @@ services:
             - KAFKA_TOPIC=bgp-updates
             - BGP_COLLECTOR=ris-live
         depends_on:
-            - kafka
+            kafka:
+                condition: service_healthy
         working_dir: /app
         volumes:
             - .:/app

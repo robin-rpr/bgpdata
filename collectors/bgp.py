@@ -71,7 +71,6 @@ if __name__ == "__main__":
         bootstrap_servers=kafka_servers.split(","),
         acks='all',  # Wait for all replicas to acknowledge
         retries=5,  # Retry on failure
-        enable_idempotence=True  # Ensure exactly-once delivery
     )
 
     # Set up BGPStream for real-time streaming without filters
