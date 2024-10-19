@@ -108,7 +108,7 @@ async def process_bgpstream():
     stream = BGPStream(project=collector)
     
     count = 0
-    batch_size = 1000
+    batch_size = 10000
     messages_batch = []
 
     async with Session() as session:
