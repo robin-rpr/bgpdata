@@ -1,118 +1,73 @@
 services:
     # PostgreSQL service for your app
     postgres:
-        image: postgres:13
+        image: timescale/timescaledb:latest-pg13
         container_name: postgres
+        restart: always
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U postgres"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
         environment:
-            POSTGRES_USER: user
-            POSTGRES_PASSWORD: password
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
             POSTGRES_DB: default
         ports:
             - "5432:5432"
         volumes:
             - pg_data:/var/lib/postgresql/data
-        restart: always
-
-    # TimescaleDB service for RIS Live data
-    timescale:
-        image: timescale/timescaledb:latest-pg13
-        container_name: timescale
-        environment:
-            POSTGRES_USER: user
-            POSTGRES_PASSWORD: password
-            POSTGRES_DB: default
-        ports:
-            - "5433:5432"
-        volumes:
-            - timescale_data:/var/lib/postgresql/data
-        restart: always
-
-    # Kafka Zookeeper (needed for Kafka)
-    zookeeper:
-        image: confluentinc/cp-zookeeper:7.0.1
-        container_name: zookeeper
-        environment:
-            ZOOKEEPER_CLIENT_PORT: 2181
-            ZOOKEEPER_TICK_TIME: 2000
-        ports:
-            - "2181:2181"
-        restart: always
-
-    # Kafka broker
-    kafka:
-        image: confluentinc/cp-kafka:7.0.1
-        container_name: kafka
-        healthcheck:
-            test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka:9092 --list"]
-            interval: 30s
-            timeout: 10s
-            retries: 5
-            start_period: 40s
-        environment:
-            KAFKA_BROKER_ID: 1
-            KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-            KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-            KAFKA_LOG_RETENTION_MS: 172800000
-        ports:
-            - "9092:9092"
-        depends_on:
-            - zookeeper
-        volumes:
-            - kafka_data:/var/lib/kafka/data
-        restart: always
 
     # Flask application service
     web:
         build: .
         container_name: web
         healthcheck:
-            test: ["CMD", "curl", "-f", "http://localhost:80"]
+            test: ["CMD", "curl", "-f", "http://localhost:8080"]
             interval: 30s
             timeout: 10s
             retries: 3
             start_period: 40s
         restart: always
         environment:
-            - POSTGRESQL_DATABASE=postgresql+asyncpg://user:password@postgres:5432/default
-            - TIMESCALE_DATABASE=postgresql+asyncpg://user:password@timescale:5432/default
+            - POSTGRESQL_DATABASE=postgresql+asyncpg://postgres:postgres@postgres:5432/default
             - POSTMARK_API_KEY=your-postmark-api-key
-            - KAFKA_SERVERS=kafka:9092
-            - KAFKA_TOPIC=bgp-updates
             - FLASK_SECRET_KEY=your-flask-secret-key
-            - FLASK_HOST=http://localhost:5200
+            - FLASK_HOST=http://localhost:8080
             - FLASK_ENV=development
             - FLASK_DEBUG=1
             - FLASK_APP=app.py
-            - FLASK_RUN_PORT=5200
+            - FLASK_RUN_PORT=8080
         ports:
-            - "5200:5200"
+            - "8080:8080"
         depends_on:
-            - postgres
-            - timescale
+            postgres:
+                condition: service_healthy
         working_dir: /app
         volumes:
             - .:/app
-        entrypoint: gunicorn --bind 0.0.0.0:5200 --reload app:app
+        entrypoint: >
+            sh -c "alembic upgrade head && gunicorn --bind 0.0.0.0:8080 --reload app:app"
 
     # Independent data collector service for RIS Live data
     bgp_collector:
         build: .
         container_name: bgp_collector
         environment:
-            - KAFKA_SERVERS=kafka:9092
-            - KAFKA_TOPIC=bgp-updates
+            - POSTGRESQL_DATABASE=postgresql+asyncpg://postgres:postgres@postgres:5432/default
             - BGP_COLLECTOR=ris-live
         depends_on:
-            kafka:
+            web:
+                condition: service_healthy
+            postgres:
                 condition: service_healthy
         working_dir: /app
         volumes:
             - .:/app
-        entrypoint: python collectors/bgp.py
+        entrypoint: >
+            sh -c "alembic upgrade head && python collectors/bgp.py"
 
 # Define named volumes
 volumes:
     pg_data:
-    timescale_data:
     kafka_data:

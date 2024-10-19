@@ -40,7 +40,7 @@ app.config['SESSION_COOKIE_SECURE'] = ENVIRONMENT == 'production'
 # Initialize CORS
 cors_origin = [
     'https://bgpdata.io',
-    'http://localhost:5200'
+    'http://localhost:8080'
 ]
 
 CORS(
@@ -353,36 +353,20 @@ def asn(asn):
 #app.register_blueprint(user_blueprint, url_prefix='/user')
 
 if __name__ == '__main__':
-    global postgres, timescale
-
-    # Perform Migrations
-    alembic_cfg = Config('alembic.ini')
-    alembic_cfg.set_section_option(
-        'postgres', 'sqlalchemy.url', os.getenv('POSTGRESQL_DATABASE'))
-    alembic_cfg.set_section_option(
-        'timescale', 'sqlalchemy.url', os.getenv('TIMESCALE_DATABASE'))
-    command.upgrade(alembic_cfg, 'head')
+    global db
 
     # Session Factories
-    PostgresSession = sessionmaker(
+    Session = sessionmaker(
         create_async_engine(
             os.getenv('POSTGRESQL_DATABASE'), echo=ENVIRONMENT != 'production'
         ), expire_on_commit=False, class_=AsyncSession
     )
 
-    TimescaleSession = sessionmaker(
-        create_async_engine(
-            os.getenv('TIMESCALE_DATABASE'), echo=ENVIRONMENT != 'production'
-        ), expire_on_commit=False, class_=AsyncSession
-    )
-
-    # Open Sessions
-    postgres = PostgresSession()
-    timescale = TimescaleSession()
+    # Open Session
+    db = Session()
 
     # Flask Application
     app.run()
 
     # Close Session
-    postgres.close()
-    timescale.close()
+    db.close()

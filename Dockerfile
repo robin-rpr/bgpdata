@@ -1,4 +1,4 @@
-FROM python:3.6
+FROM python:3.11.3
 
 # Define environment variables with default values
 ENV POSTGRESQL_DATABASE=postgresql+asyncpg://postgres:5432/default

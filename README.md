@@ -50,7 +50,7 @@ This command will:
 
 ### Accessing the Application
 
-Once the services are up and running, you can access the Flask application at [`http://localhost:5200`](http://localhost:5200).
+Once the services are up and running, you can access the Flask application at [`http://localhost:8080`](http://localhost:8080).
 
 # Acknowledgments
 
