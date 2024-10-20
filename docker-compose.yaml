@@ -16,7 +16,7 @@ services:
         ports:
             - "5432:5432"
         volumes:
-            - pg_data:/var/lib/postgresql/data
+            - /Volumes/A001:/var/lib/postgresql/data
 
     # Flask application service
     web:
@@ -67,6 +67,5 @@ services:
             sh -c "alembic upgrade head && python collectors/bgp.py"
 
 # Define named volumes
-volumes:
-    pg_data:
-    kafka_data:
+#volumes:
+#    pg_data:

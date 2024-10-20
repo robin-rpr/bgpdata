@@ -112,29 +112,38 @@ async def copy_bgp_data(session, messages):
             ]
         )
 
-async def aggregate_ris_lite(session, messages_batch):
-    """Aggregate the data to create ris-lite entries."""
+async def aggregate_ris_lite_by_origin(session, messages_batch, two_hops=False):
+    """Aggregate ris-lite data by origin and segment, possibly including a second hop."""
     aggregation = {}
 
-    # Aggregate peer counts and path segments
+    # Aggregate by origin and segment (AS path)
     for msg in messages_batch:
-        key = (msg['prefix'], msg['collector'])
-        if key not in aggregation:
-            aggregation[key] = {
-                'full_peer_count': 0,
-                'partial_peer_count': 0,
-                'segment': set()  # Store segments
-            }
-
-        # Update full or partial peer counts based on message type
-        if msg['type'] == 'F':
-            aggregation[key]['full_peer_count'] += 1
-        elif msg['type'] == 'U':
-            aggregation[key]['partial_peer_count'] += 1
-
-        # Store AS path segments
         if msg['as_path']:
-            aggregation[key]['segment'].add(msg['as_path'])
+            as_path = msg['as_path'].split()
+
+            # Origin AS is the last in the path
+            origin = as_path[-1]
+            # First hop is the second-to-last AS in the path (if present)
+            first_hop = as_path[-2] if two_hops and len(as_path) > 1 else None
+
+            path = (first_hop, origin) if first_hop else (origin,)
+
+            key = (path, msg['prefix'], msg['collector'])
+            if key not in aggregation:
+                aggregation[key] = {
+                    'full_peer_count': 0,
+                    'partial_peer_count': 0,
+                    'timestamps': []
+                }
+
+            # Update full or partial peer counts based on message type
+            if msg['type'] == 'F':
+                aggregation[key]['full_peer_count'] += 1
+            elif msg['type'] == 'U':
+                aggregation[key]['partial_peer_count'] += 1
+
+            # Store the timestamp
+            aggregation[key]['timestamps'].append(msg['timestamp'])
 
     # Prepare data for bulk insert into ris_lite
     data_tuples = [
@@ -144,9 +153,9 @@ async def aggregate_ris_lite(session, messages_batch):
             prefix,
             data['full_peer_count'],
             data['partial_peer_count'],
-            ','.join(data['segment'])
+            ','.join(path)  # Store path as a string
         )
-        for (prefix, collector), data in aggregation.items()
+        for (path, prefix, collector), data in aggregation.items()
     ]
 
     # Insert into the ris_lite table
@@ -183,14 +192,14 @@ async def process_bgpstream():
                 # When the batch is full, insert it using COPY
                 if count % batch_size == 0:
                     await copy_bgp_data(session, messages_batch)
-                    await aggregate_ris_lite(session, messages_batch)  # Aggregate ris_lite
+                    await aggregate_ris_lite_by_origin(session, messages_batch)  # Aggregate ris_lite
                     messages_batch = []  # Reset the batch after inserting
                     logger.info(f"Processed {count} messages")
 
         # Insert any remaining messages in the batch
         if messages_batch:
             await copy_bgp_data(session, messages_batch)
-            await aggregate_ris_lite(session, messages_batch)  # Aggregate ris_lite
+            await aggregate_ris_lite_by_origin(session, messages_batch)  # Aggregate ris_lite
             logger.info(f"Processed {count} messages")
 
 if __name__ == "__main__":
