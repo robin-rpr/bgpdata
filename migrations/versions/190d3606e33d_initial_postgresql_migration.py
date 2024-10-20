@@ -43,6 +43,18 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id', 'timestamp')
     )
 
+    # RIB Lite Table
+    op.create_table(
+        'ris_lite',
+        sa.Column('id', sa.Integer, primary_key=True, autoincrement=True),
+        sa.Column('timestamp', sa.DateTime, nullable=False),
+        sa.Column('collector', sa.String(50), nullable=False),
+        sa.Column('prefix', sa.String(50), nullable=False),
+        sa.Column('full_peer_count', sa.Integer, nullable=False),
+        sa.Column('partial_peer_count', sa.Integer, nullable=False),
+        sa.Column('segment', sa.Text, nullable=True),
+    )
+
     # Convert the table to a TimescaleDB hypertable
     op.execute("SELECT create_hypertable('bgp_updates', 'timestamp', if_not_exists => TRUE);")
 
@@ -53,3 +65,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table('users')
     op.drop_table('bgp_updates')
+    op.drop_table('ris_lite')

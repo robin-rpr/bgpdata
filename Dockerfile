@@ -66,5 +66,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code into the container
 COPY . .
 
-# Command to run the application with Gunicorn
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:80", "app:app"]
+# Run the application with Gunicorn
+CMD ["sh", "-c", "alembic upgrade head && gunicorn --bind 0.0.0.0:80 --workers 4 --worker-class uvicorn.workers.UvicornWorker 'app:asgi_app'"]

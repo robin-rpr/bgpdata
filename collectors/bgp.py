@@ -35,6 +35,18 @@ bgp_updates = Table(
     Column("as_path", Text, nullable=True),
 )
 
+ris_lite = Table(
+    "ris_lite",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("timestamp", DateTime, nullable=False),
+    Column("collector", String(50), nullable=False),
+    Column("prefix", String(50), nullable=False),
+    Column("full_peer_count", Integer, nullable=False),
+    Column("partial_peer_count", Integer, nullable=False),
+    Column("segment", Text, nullable=True),
+)
+
 # Function to format BGPStream elements into a dict format for TimescaleDB
 def bgpstream_format(collector, elem):
     """Format BGPStream elements into a dict format for TimescaleDB."""
@@ -100,9 +112,60 @@ async def copy_bgp_data(session, messages):
             ]
         )
 
+async def aggregate_ris_lite(session, messages_batch):
+    """Aggregate the data to create ris-lite entries."""
+    aggregation = {}
+
+    # Aggregate peer counts and path segments
+    for msg in messages_batch:
+        key = (msg['prefix'], msg['collector'])
+        if key not in aggregation:
+            aggregation[key] = {
+                'full_peer_count': 0,
+                'partial_peer_count': 0,
+                'segment': set()  # Store segments
+            }
+
+        # Update full or partial peer counts based on message type
+        if msg['type'] == 'F':
+            aggregation[key]['full_peer_count'] += 1
+        elif msg['type'] == 'U':
+            aggregation[key]['partial_peer_count'] += 1
+
+        # Store AS path segments
+        if msg['as_path']:
+            aggregation[key]['segment'].add(msg['as_path'])
+
+    # Prepare data for bulk insert into ris_lite
+    data_tuples = [
+        (
+            datetime.now(),  # Use current timestamp for now
+            collector,
+            prefix,
+            data['full_peer_count'],
+            data['partial_peer_count'],
+            ','.join(data['segment'])
+        )
+        for (prefix, collector), data in aggregation.items()
+    ]
+
+    # Insert into the ris_lite table
+    async with engine.connect() as conn:
+        raw_conn = await conn.get_raw_connection()
+        asyncpg_conn = raw_conn._connection
+        await asyncpg_conn.copy_records_to_table(
+            'ris_lite',
+            records=data_tuples,
+            columns=[
+                'timestamp', 'collector', 'prefix', 'full_peer_count', 'partial_peer_count', 'segment'
+            ]
+        )
+
+    logger.info(f"Inserted aggregated ris_lite data")
+
 async def process_bgpstream():
     """Process BGPStream and store data in TimescaleDB."""
-    collector = os.getenv("BGP_COLLECTOR", "ris-live")
+    collector = "ris-live"
 
     # Set up BGPStream
     stream = BGPStream(project=collector)
@@ -120,12 +183,14 @@ async def process_bgpstream():
                 # When the batch is full, insert it using COPY
                 if count % batch_size == 0:
                     await copy_bgp_data(session, messages_batch)
+                    await aggregate_ris_lite(session, messages_batch)  # Aggregate ris_lite
                     messages_batch = []  # Reset the batch after inserting
                     logger.info(f"Processed {count} messages")
 
         # Insert any remaining messages in the batch
         if messages_batch:
             await copy_bgp_data(session, messages_batch)
+            await aggregate_ris_lite(session, messages_batch)  # Aggregate ris_lite
             logger.info(f"Processed {count} messages")
 
 if __name__ == "__main__":

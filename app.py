@@ -2,7 +2,9 @@ from flask import Flask, render_template, request, redirect, url_for, abort, ses
 from flask_compress import Compress
 from flask_cors import CORS
 from flask_talisman import Talisman
+from asgiref.wsgi import WsgiToAsgi
 from utils.postmark import postmark
+from utils.database import PostgreSQL
 from utils.transformers import time_ago, hash_text, format_text, sanitize_text
 from utils.validators import is_authenticated, is_onboarded, is_valid_email
 from utils.filters import find_author_by_id
@@ -10,16 +12,15 @@ from utils.generators import generate_verification_code
 from views.user import user_blueprint
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from alembic.config import Config
-from alembic import command
+from sqlalchemy import text
 import urllib.parse
+import logging
 import atexit
 import random
-import requests
+import httpx
 import sass  # type: ignore
 import pytz
+import sys
 import os
 import re
 
@@ -34,8 +35,23 @@ CACHE_MAX_AGE = int(os.getenv('CACHE_MAX_AGE', '86400'))
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
+# Create ASGI Application
+asgi_app = WsgiToAsgi(app)
+
 # Set secure session cookies
 app.config['SESSION_COOKIE_SECURE'] = ENVIRONMENT == 'production'
+
+# Logging configuration for Uvicorn and Gunicorn
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s: %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+# Ensure the Flask app logger also uses this configuration
+app.logger.setLevel(logging.INFO)
 
 # Initialize CORS
 cors_origin = [
@@ -51,7 +67,6 @@ CORS(
 
 # Initialize Flask-Talisman
 Talisman(app, content_security_policy=None)
-
 
 def compile_scss():
     scss_file = 'static/styles/main.scss'
@@ -115,16 +130,30 @@ def index():
 
 
 @app.route('/as/<int:asn>')
-def asn(asn):
+async def asn(asn):
     try:
         url = f"https://stat.ripe.net/data/as-names/data.json?resource=AS{asn}"
-        response = requests.get(url, timeout=10)
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, timeout=10)
+        response.raise_for_status()
         data = response.json()
-
         as_name = data['data']['names'].get(str(asn), "Unknown")
+#
+        prefix = "2001:67c:2e8::/48"
+        query = text(f"SELECT * FROM ris_lite WHERE prefix = '{prefix}' ORDER BY timestamp DESC LIMIT 1")
+        
+        async with PostgreSQL() as session:
+            result = await session.execute(query)
+            local_results = result.fetchall()
+            app.logger.info(f"Local ris_lite data for AS{asn}: {local_results}")
+
+        # TODO: Retrieve data from RIPE
+        #ripe_results = requests.get(f"https://stat.ripe.net/data/routing-history/data.json?resource={prefix}", timeout=10)
+        #combined_results = local_results + ripe_results.json()['data']['updates']
+        #app.logger.info(f"Combined ris_lite data for AS{asn}: {combined_results}")
 
     except Exception as e:
-        app.logger.error("Failed to retrieve AS%s: %s", str(asn), str(e))
+        app.logger.error(f"Failed to retrieve AS{asn}: {str(e)}")
         return abort(500, description="An error occurred")
 
     return render_template('pages/asn.html', asn=asn, as_name=as_name)
@@ -353,20 +382,4 @@ def asn(asn):
 #app.register_blueprint(user_blueprint, url_prefix='/user')
 
 if __name__ == '__main__':
-    global db
-
-    # Session Factories
-    Session = sessionmaker(
-        create_async_engine(
-            os.getenv('POSTGRESQL_DATABASE'), echo=ENVIRONMENT != 'production'
-        ), expire_on_commit=False, class_=AsyncSession
-    )
-
-    # Open Session
-    db = Session()
-
-    # Flask Application
     app.run()
-
-    # Close Session
-    db.close()

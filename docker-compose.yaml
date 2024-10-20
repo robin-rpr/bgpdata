@@ -46,8 +46,8 @@ services:
         working_dir: /app
         volumes:
             - .:/app
-        entrypoint: >
-            sh -c "alembic upgrade head && gunicorn --bind 0.0.0.0:8080 --reload app:app"
+        command: >
+            sh -c "alembic upgrade head && gunicorn --bind 0.0.0.0:8080 --workers 4 --worker-class uvicorn.workers.UvicornWorker --reload 'app:asgi_app'  --log-level info --access-logfile - --error-logfile -"
 
     # Independent data collector service for RIS Live data
     bgp_collector:
@@ -55,7 +55,6 @@ services:
         container_name: bgp_collector
         environment:
             - POSTGRESQL_DATABASE=postgresql+asyncpg://postgres:postgres@postgres:5432/default
-            - BGP_COLLECTOR=ris-live
         depends_on:
             web:
                 condition: service_healthy
