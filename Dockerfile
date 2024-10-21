@@ -11,7 +11,7 @@ ENV FLASK_DEBUG=0
 ENV FLASK_APP=app.py
 ENV FLASK_RUN_PORT=80
 
-# Install system dependencies
+# Install system dependencies including OpenSSH
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
@@ -19,11 +19,25 @@ RUN apt-get update && apt-get install -y \
     libbz2-dev \
     libcurl4-openssl-dev \
     librdkafka-dev \
+    openmpi-bin \
+    libopenmpi-dev \
     autoconf \
     automake \
     libtool \
+    openssh-server \
+    netcat \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Setup SSH server without authentication
+RUN mkdir /var/run/sshd && \
+    echo "StrictModes no" >> /etc/ssh/sshd_config && \
+    echo "PermitRootLogin yes" >> /etc/ssh/sshd_config && \
+    echo "PermitEmptyPasswords yes" >> /etc/ssh/sshd_config && \
+    echo "PasswordAuthentication no" >> /etc/ssh/sshd_config && \
+    echo "ChallengeResponseAuthentication no" >> /etc/ssh/sshd_config && \
+    echo "PreferredAuthentications password" >> /etc/ssh/sshd_config && \
+    echo "PubkeyAuthentication no" >> /etc/ssh/sshd_config
 
 # Install Wandio from source
 RUN mkdir -p /tmp/wandio && \
@@ -66,5 +80,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code into the container
 COPY . .
 
-# Run the application with Gunicorn
-CMD ["sh", "-c", "alembic upgrade head && gunicorn --bind 0.0.0.0:80 --workers 4 --worker-class uvicorn.workers.UvicornWorker 'app:asgi_app'"]
+# Start SSH service in the background and run the application with Gunicorn
+ENTRYPOINT ["/bin/sh", "-c", "alembic upgrade head && gunicorn --bind 0.0.0.0:80 --workers 4 --worker-class uvicorn.workers.UvicornWorker 'app:asgi_app'"]

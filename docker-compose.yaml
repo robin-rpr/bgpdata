@@ -16,7 +16,7 @@ services:
         ports:
             - "5432:5432"
         volumes:
-            - /Volumes/A001:/var/lib/postgresql/data
+            - /Volumes/SDCARD/postgres_data:/var/lib/postgresql/data
 
     # Flask application service
     web:
@@ -49,23 +49,46 @@ services:
         command: >
             sh -c "alembic upgrade head && gunicorn --bind 0.0.0.0:8080 --workers 4 --worker-class uvicorn.workers.UvicornWorker --reload 'app:asgi_app'  --log-level info --access-logfile - --error-logfile -"
 
-    # Independent data collector service for RIS Live data
-    bgp_collector:
+    ris:
         build: .
-        container_name: bgp_collector
+        container_name: ris
+        healthcheck:
+            test: ["CMD", "nc", "-z", "localhost", "22"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 10s
         environment:
             - POSTGRESQL_DATABASE=postgresql+asyncpg://postgres:postgres@postgres:5432/default
         depends_on:
-            web:
-                condition: service_healthy
             postgres:
                 condition: service_healthy
         working_dir: /app
         volumes:
             - .:/app
         entrypoint: >
-            sh -c "alembic upgrade head && python collectors/bgp.py"
+            /bin/sh -c "/usr/sbin/sshd -D & ./scripts/wait-for-it.sh ris-lite -- mpirun --allow-run-as-root -np 4 --host ris,ris-lite python services/ris.py"
 
-# Define named volumes
-#volumes:
-#    pg_data:
+    ris-lite:
+        build: .
+        container_name: ris-lite
+        healthcheck:
+            test: ["CMD", "nc", "-z", "localhost", "22"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 10s
+        environment:
+            - POSTGRESQL_DATABASE=postgresql+asyncpg://postgres:postgres@postgres:5432/default
+        depends_on:
+            postgres:
+                condition: service_healthy
+        working_dir: /app
+        volumes:
+            - .:/app
+        entrypoint: >
+            /bin/sh -c "/usr/sbin/sshd -D & ./scripts/wait-for-it.sh ris -- mpirun --allow-run-as-root -np 1 --host ris,ris-lite python services/ris_lite.py"
+
+# Define volumes
+volumes:
+    pg_data:

@@ -30,7 +30,7 @@ def upgrade() -> None:
 
     # BGP Updates Table
     op.create_table(
-        'bgp_updates',
+        'ris',
         sa.Column('id', sa.Integer, primary_key=True, autoincrement=True),
         sa.Column('type', sa.String(1), nullable=False),  # F: Full (R)oute, U: (A)nnouncement, W: Withdrawal
         sa.Column('timestamp', sa.DateTime, nullable=False),
