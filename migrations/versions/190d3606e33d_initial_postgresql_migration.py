@@ -56,13 +56,13 @@ def upgrade() -> None:
     )
 
     # Convert the table to a TimescaleDB hypertable
-    op.execute("SELECT create_hypertable('bgp_updates', 'timestamp', if_not_exists => TRUE);")
+    op.execute("SELECT create_hypertable('ris', 'timestamp', if_not_exists => TRUE);")
 
     # Add a retention policy to automatically drop data older than 48 hours
-    op.execute("SELECT add_retention_policy('bgp_updates', INTERVAL '48 hours');")
+    op.execute("SELECT add_retention_policy('ris', INTERVAL '24 hours');")
 
 
 def downgrade() -> None:
     op.drop_table('users')
-    op.drop_table('bgp_updates')
+    op.drop_table('ris')
     op.drop_table('ris_lite')

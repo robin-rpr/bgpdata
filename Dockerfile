@@ -29,15 +29,20 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Setup SSH server without authentication
+# Configure SSH server
 RUN mkdir /var/run/sshd && \
     echo "StrictModes no" >> /etc/ssh/sshd_config && \
     echo "PermitRootLogin yes" >> /etc/ssh/sshd_config && \
     echo "PermitEmptyPasswords yes" >> /etc/ssh/sshd_config && \
-    echo "PasswordAuthentication no" >> /etc/ssh/sshd_config && \
-    echo "ChallengeResponseAuthentication no" >> /etc/ssh/sshd_config && \
-    echo "PreferredAuthentications password" >> /etc/ssh/sshd_config && \
-    echo "PubkeyAuthentication no" >> /etc/ssh/sshd_config
+    echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config && \
+    echo "ChallengeResponseAuthentication no" >> /etc/ssh/sshd_config
+
+# Configure SSH client
+RUN ssh-keygen -A && \
+    echo "Host *" >> /etc/ssh/ssh_config && \
+    echo "StrictHostKeyChecking no" >> /etc/ssh/ssh_config && \
+    echo "PreferredAuthentications password" >> /etc/ssh/ssh_config && \
+    echo "PubkeyAuthentication no" >> /etc/ssh/ssh_config
 
 # Install Wandio from source
 RUN mkdir -p /tmp/wandio && \
@@ -80,5 +85,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code into the container
 COPY . .
 
-# Start SSH service in the background and run the application with Gunicorn
-ENTRYPOINT ["/bin/sh", "-c", "alembic upgrade head && gunicorn --bind 0.0.0.0:80 --workers 4 --worker-class uvicorn.workers.UvicornWorker 'app:asgi_app'"]
+# Remove root password
+RUN passwd -d root

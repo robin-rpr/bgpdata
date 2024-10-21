@@ -11,6 +11,13 @@ import io
 import asyncpg
 from mpi4py import MPI
 
+# Custom JSON encoder that converts datetime objects to ISO 8601 strings
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
+
 # Initialize logging
 logger = logging.getLogger(__name__)
 
@@ -90,7 +97,14 @@ async def copy_bgp_data(session, messages):
 def hash_batch(messages):
     hasher = hashlib.sha256()
     for message in messages:
-        hasher.update(json.dumps(message, sort_keys=True).encode('utf-8'))
+        # Create a copy of the message so we don't modify the original
+        message_copy = message.copy()
+        # Convert datetime objects to ISO 8601 strings in the copy
+        for key, value in message_copy.items():
+            if isinstance(value, datetime):
+                message_copy[key] = value.isoformat()
+        # Hash the copy
+        hasher.update(json.dumps(message_copy, sort_keys=True).encode('utf-8'))
     return hasher.hexdigest()
 
 # Leader election and failure handling logic
@@ -121,8 +135,8 @@ async def main():
                             await copy_bgp_data(session, messages_batch)
                             logger.info(f"Leader {rank} processed {len(messages_batch)} messages.")
 
-                            # Broadcast the messages_batch and batch_hash
-                            comm.bcast(json.dumps(messages_batch), root=rank)
+                            # Broadcast the messages_batch and batch_hash with custom JSON encoder
+                            comm.bcast(json.dumps(messages_batch, cls=DateTimeEncoder), root=rank)
                             comm.bcast(batch_hash, root=rank)
                         except Exception as e:
                             logger.error(f"Leader {rank} failed: {e}")

@@ -32,12 +32,8 @@ services:
         environment:
             - POSTGRESQL_DATABASE=postgresql+asyncpg://postgres:postgres@postgres:5432/default
             - POSTMARK_API_KEY=your-postmark-api-key
-            - FLASK_SECRET_KEY=your-flask-secret-key
-            - FLASK_HOST=http://localhost:8080
-            - FLASK_ENV=development
-            - FLASK_DEBUG=1
-            - FLASK_APP=app.py
-            - FLASK_RUN_PORT=8080
+            - SECRET_KEY=your-flask-secret-key
+            - ENVIRONMENT=development
         ports:
             - "8080:8080"
         depends_on:
@@ -46,8 +42,8 @@ services:
         working_dir: /app
         volumes:
             - .:/app
-        command: >
-            sh -c "alembic upgrade head && gunicorn --bind 0.0.0.0:8080 --workers 4 --worker-class uvicorn.workers.UvicornWorker --reload 'app:asgi_app'  --log-level info --access-logfile - --error-logfile -"
+        entrypoint: >
+            /bin/sh -c "alembic upgrade head && gunicorn --bind 0.0.0.0:8080 --workers 4 --worker-class uvicorn.workers.UvicornWorker --reload --log-level info --access-logfile - --error-logfile - 'app:asgi_app'"
 
     ris:
         build: .
@@ -61,13 +57,15 @@ services:
         environment:
             - POSTGRESQL_DATABASE=postgresql+asyncpg://postgres:postgres@postgres:5432/default
         depends_on:
+            web:
+                condition: service_healthy
             postgres:
                 condition: service_healthy
         working_dir: /app
         volumes:
             - .:/app
         entrypoint: >
-            /bin/sh -c "/usr/sbin/sshd -D & ./scripts/wait-for-it.sh ris-lite -- mpirun --allow-run-as-root -np 4 --host ris,ris-lite python services/ris.py"
+            /bin/sh -c "/usr/sbin/sshd -D & ./scripts/wait-for-it.sh ris-lite -- mpirun --allow-run-as-root -np 2 --host ris,ris-lite -x POSTGRESQL_DATABASE python services/ris.py"
 
     ris-lite:
         build: .
@@ -81,13 +79,15 @@ services:
         environment:
             - POSTGRESQL_DATABASE=postgresql+asyncpg://postgres:postgres@postgres:5432/default
         depends_on:
+            web:
+                condition: service_healthy
             postgres:
                 condition: service_healthy
         working_dir: /app
         volumes:
             - .:/app
         entrypoint: >
-            /bin/sh -c "/usr/sbin/sshd -D & ./scripts/wait-for-it.sh ris -- mpirun --allow-run-as-root -np 1 --host ris,ris-lite python services/ris_lite.py"
+            /bin/sh -c "/usr/sbin/sshd -D & ./scripts/wait-for-it.sh ris -- mpirun --allow-run-as-root -np 1 --host ris,ris-lite -x POSTGRESQL_DATABASE python services/ris_lite.py"
 
 # Define volumes
 volumes:

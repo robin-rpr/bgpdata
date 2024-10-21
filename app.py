@@ -26,9 +26,8 @@ import re
 
 
 # Environment variables
-HOST = os.getenv('FLASK_HOST', 'http://localhost:80')
-SECRET_KEY = os.getenv('FLASK_SECRET_KEY', 'your-flask-secret-key')
-ENVIRONMENT = os.getenv('FLASK_ENV', 'development')
+SECRET_KEY = os.getenv('SECRET_KEY', 'your-flask-secret-key')
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 # Cache for 1 day (86400 seconds)
 CACHE_MAX_AGE = int(os.getenv('CACHE_MAX_AGE', '86400'))
 

@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import MetaData, Table, Column, String, Integer, DateTime, Text
 from datetime import datetime
 import asyncpg
+import asyncio
 
 # Initialize logging
 logger = logging.getLogger(__name__)
@@ -56,8 +57,14 @@ async def main():
         while True:
             # Receive the broadcasted batch from ris
             broadcasted_batch = comm.bcast(None, root=0)
+
+            if broadcasted_batch is None:
+                logger.info("No batch received. Sleeping for one second.")
+                await asyncio.sleep(1)
+                continue
+
             if broadcasted_batch == "error":
-                logger.error("Received error notification from ris leader")
+                logger.error("Received error notification from leader.")
                 break
 
             messages_batch = json.loads(broadcasted_batch)
