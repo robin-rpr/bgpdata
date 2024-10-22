@@ -11,19 +11,11 @@ ENV FLASK_DEBUG=0
 ENV FLASK_APP=app.py
 ENV FLASK_RUN_PORT=80
 
-# Install system dependencies including OpenSSH
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
-    curl \
-    zlib1g-dev \
-    libbz2-dev \
-    libcurl4-openssl-dev \
-    librdkafka-dev \
     openmpi-bin \
     libopenmpi-dev \
-    autoconf \
-    automake \
-    libtool \
     openssh-server \
     netcat \
     && apt-get clean \
@@ -43,35 +35,6 @@ RUN ssh-keygen -A && \
     echo "StrictHostKeyChecking no" >> /etc/ssh/ssh_config && \
     echo "PreferredAuthentications password" >> /etc/ssh/ssh_config && \
     echo "PubkeyAuthentication no" >> /etc/ssh/ssh_config
-
-# Install Wandio from source
-RUN mkdir -p /tmp/wandio && \
-    cd /tmp/wandio && \
-    curl -LO https://github.com/LibtraceTeam/wandio/archive/refs/tags/4.2.4-1.tar.gz && \
-    tar zxf 4.2.4-1.tar.gz && \
-    cd wandio-4.2.4-1/ && \
-    autoreconf -fiv && \
-    ./configure && \
-    make && \
-    make install && \
-    ldconfig && \
-    cd / && \
-    rm -rf /tmp/wandio
-
-# Install BGPStream from source
-RUN mkdir -p /tmp/bgpstream && \
-    cd /tmp/bgpstream && \
-    curl -LO https://github.com/CAIDA/libbgpstream/releases/download/v2.2.0/libbgpstream-2.2.0.tar.gz && \
-    tar zxf libbgpstream-2.2.0.tar.gz && \
-    cd libbgpstream-2.2.0/ && \
-    autoreconf -fiv && \
-    ./configure && \
-    make && \
-    make check && \
-    make install && \
-    ldconfig && \
-    cd / && \
-    rm -rf /tmp/bgpstream
 
 # Set the working directory in the container
 WORKDIR /app

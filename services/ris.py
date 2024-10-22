@@ -2,14 +2,14 @@ import os
 import json
 import logging
 import hashlib
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import MetaData, Table, Column, String, Integer, DateTime, Text
 from datetime import datetime
-from pybgpstream import BGPStream
-import io
-import asyncpg
 from mpi4py import MPI
+import websocket
+import asyncpg
+import random
+import json
 
 # Custom JSON encoder that converts datetime objects to ISO 8601 strings
 class DateTimeEncoder(json.JSONEncoder):
@@ -23,137 +23,148 @@ logger = logging.getLogger(__name__)
 
 # Create the engine and session for PostgreSQL
 engine = create_async_engine(os.getenv("POSTGRESQL_DATABASE"), echo=False, future=True)
-Session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
-
-# Define the 'ris' and 'ris_lite' table schemas using SQLAlchemy
-metadata = MetaData()
-
-ris = Table(
-    "ris", metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("type", String(1), nullable=False), 
-    Column("timestamp", DateTime, nullable=False),
-    Column("collector", String(50), nullable=False),
-    Column("peer_as", Integer, nullable=False),
-    Column("peer_ip", String(50), nullable=False),
-    Column("prefix", String(50), nullable=False),
-    Column("origins", Text, nullable=True),
-    Column("as_path", Text, nullable=True),
-)
 
 # MPI setup
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
 
-# Define the leader process (rank 0 is the leader)
+# Leader setup
+leader_rank = 0
+
+# Check if current process is the leader
 def is_leader():
-    return rank == 0
+    return rank == leader_rank
 
-# Function to format BGPStream elements into a dict format for TimescaleDB
-def bgpstream_format(collector, elem):
-    if elem.type in ["R", "A"]:
-        as_path = elem.fields.get("as-path", "")
-        if as_path:
-            origins = elem.fields["as-path"].split()
-            typ = "F" if elem.type == "R" else "U"
-            return {
-                "type": typ,
-                "timestamp": datetime.fromtimestamp(elem.time),
-                "collector": collector,
-                "peer_as": elem.peer_asn,
-                "peer_ip": elem.peer_address,
-                "prefix": elem.fields["prefix"],
-                "origins": " ".join(origins),
-                "as_path": as_path,
-            }
-    elif elem.type == "W":
-        return {
-            "type": "W",
-            "timestamp": datetime.fromtimestamp(elem.time),
-            "collector": collector,
-            "peer_as": elem.peer_asn,
-            "peer_ip": elem.peer_address,
-            "prefix": elem.fields["prefix"],
-            "origins": None,
-            "as_path": None,
-        }
-    return None
+# New leadership election logic
+def elect_new_leader():
+    global leader_rank
+    eligible_ranks = list(range(size))  # All processes except the current failed one can be re-elected
+    if leader_rank in eligible_ranks:
+        eligible_ranks.remove(leader_rank)  # Exclude the current leader who failed
 
-# Function to use COPY for bulk insert into TimescaleDB using asyncpg
-async def copy_bgp_data(session, messages):
-    if not messages:
-        return
-    data_tuples = [
-        (msg['type'], msg['timestamp'], msg['collector'], msg['peer_as'], msg['peer_ip'], msg['prefix'], msg['origins'], msg['as_path'])
-        for msg in messages
-    ]
-    async with engine.connect() as conn:
-        raw_conn = await conn.get_raw_connection()
-        asyncpg_conn = raw_conn._connection
-        await asyncpg_conn.copy_records_to_table('ris', records=data_tuples, columns=['type', 'timestamp', 'collector', 'peer_as', 'peer_ip', 'prefix', 'origins', 'as_path'])
+    if eligible_ranks:
+        leader_rank = random.choice(eligible_ranks)
+    else:
+        leader_rank = None  # No eligible leaders left
+    return leader_rank
 
-# Hashing function
-def hash_batch(messages):
-    hasher = hashlib.sha256()
-    for message in messages:
-        # Create a copy of the message so we don't modify the original
-        message_copy = message.copy()
-        # Convert datetime objects to ISO 8601 strings in the copy
-        for key, value in message_copy.items():
-            if isinstance(value, datetime):
-                message_copy[key] = value.isoformat()
-        # Hash the copy
-        hasher.update(json.dumps(message_copy, sort_keys=True).encode('utf-8'))
-    return hasher.hexdigest()
+# Function to format message into a dict format for TimescaleDB
+def extract_messages(data):
+    messages = []
+    global_id = data['id']
 
-# Leader election and failure handling logic
+    if len(data['announcements']) > 0:
+        as_path = data['path'][:-1] if isinstance(data['path'][-1], list) else data['path']
+        as_set = data['path'][-1] if isinstance(data['path'][-1], list) else None
+
+        for announcement in data['announcements']:
+            for prefix in announcement['prefixes']:
+                messages.append({
+                    "global_id": data['id'],
+                    "timestamp": datetime.fromtimestamp(data['timestamp']),
+                    "peer_ip": data['peer'],
+                    "peer_as": int(data['peer_asn']),
+                    "host": data['host'],
+                    "type": "A",
+                    "as_path": as_path,
+                    "as_set": as_set,
+                    "community": data['community'],
+                    "origin": data.get('origin', None),
+                    "med": data.get('med', None),
+                    "aggregator": data.get('aggregator', None),
+                    "next_hop": announcement['next_hop'].split(','),
+                    "prefix": prefix,
+                })
+                
+
+    if len(data['withdrawals']) > 0:
+        global_id = data['id']
+        for prefix in data['withdrawals']:
+            messages.append({
+                "global_id": data['id'],
+                "timestamp": datetime.fromtimestamp(data['timestamp']),
+                "peer_ip": data['peer'],
+                "peer_as": int(data['peer_asn']),
+                "host": data['host'],
+                "type": "W",
+                "as_path": data['path'],
+                "community": [],
+                "origin": data.get('origin', None),
+                "med": data.get('med', None),
+                "aggregator": data.get('aggregator', None),
+                "next_hop": None,
+                "prefix": prefix
+            })
+
+    return global_id, messages
+
+# Main function
 async def main():
-    collector = "ris-live"
-    stream = BGPStream(project=collector)
-    batch_size = 10000
-    cache_limit = 50000
-    messages_batch = []
-    cache = []
+    while True:
+        THRESHOLD = 10000
+        messages_batch = []
+        messages_size = 0
 
-    async with Session() as session:
-        for elem in stream:
-            message = bgpstream_format(collector, elem)
-            if message:
-                messages_batch.append(message)
-                cache.append(message)
+        try:
+            ws = websocket.WebSocket()
+            ws.connect("wss://ris-live.ripe.net/v1/ws/?client=bgpdata")
+            ws.send(json.dumps({"type": "ris_subscribe", "data": {"type": "UPDATE"}}))
 
-                # Limit cache size to 50,000 messages
-                if len(cache) > cache_limit:
-                    cache.pop(0)
+            for data in ws:
+                parsed = json.loads(data)
+                global_id, messages = extract_messages(parsed['data'])
 
-                # Only the leader writes to the database and broadcasts the batch
-                if len(messages_batch) % batch_size == 0:
-                    batch_hash = hash_batch(messages_batch)
+                # Add messages to the batch
+                messages_batch.extend(messages)
+                messages_size += 1
+                    
+                # Process the batch when it reaches the batch size
+                if messages_size % THRESHOLD == 0:
                     if is_leader():
-                        try:
-                            await copy_bgp_data(session, messages_batch)
-                            logger.info(f"Leader {rank} processed {len(messages_batch)} messages.")
+                        # Leader: Writes to the database
+                        data_tuples = [
+                            (msg['global_id'], msg['timestamp'], msg['peer_ip'], msg['peer_as'], msg['host'], msg['type'], msg['as_path'], msg['community'], msg['origin'], msg['med'], msg['aggregator'], msg['next_hop'], msg['prefix'])
+                            for msg in messages_batch
+                        ]
 
-                            # Broadcast the messages_batch and batch_hash with custom JSON encoder
-                            comm.bcast(json.dumps(messages_batch, cls=DateTimeEncoder), root=rank)
-                            comm.bcast(batch_hash, root=rank)
-                        except Exception as e:
-                            logger.error(f"Leader {rank} failed: {e}")
-                            comm.bcast("error", root=rank)  # Notify failure
-                            break  # Leader failure, exit and restart
+                        async with engine.connect() as conn:
+                            raw_conn = await conn.get_raw_connection()
+                            await raw_conn._connection.copy_records_to_table(
+                                'ris', records=data_tuples, columns=['global_id', 'timestamp', 'peer_ip', 'peer_as', 'host', 'type', 'as_path', 'community', 'origin', 'med', 'aggregator', 'next_hop', 'prefix']
+                            )
+
+                        logger.info(f"Leader {rank} processed {len(messages_batch)} messages.")
+
+                        # Broadcast the global_id for synchronization
+                        comm.bcast(global_id, root=leader_rank)
                     else:
-                        # Non-leaders cache and receive the broadcasted messages
-                        broadcasted_batch = comm.bcast(None, root=0)
-                        leader_hash = comm.bcast(None, root=0)
-                        messages_batch = json.loads(broadcasted_batch)
+                        # Non-leaders: Receive the global_id for synchronization purposes
+                        message = comm.bcast(None, root=leader_rank)
 
-                        # Insert into cache and process as a non-leader
-                        cache.extend(messages_batch)
+                        if message == "error":
+                            logger.error(f"Leader failure detected by worker {rank}")
+                            new_leader = comm.bcast(None, root=rank)
+                            if new_leader is not None:
+                                logger.info(f"New leader is now: {new_leader}")
+                        else:
+                            logger.info(f"Worker {rank} received global_id: {message}")
 
-                        logger.info(f"Worker {rank} received batch of {len(messages_batch)} messages.")
-
+                    # Reset the batch
                     messages_batch = []
+
+        except Exception as e:
+            if is_leader():
+                logger.error(f"Leader {rank} failed: {e}")
+                # Broadcast failure notification
+                comm.bcast("error", root=rank)
+
+                # Elect a new leader and notify all processes
+                new_leader = elect_new_leader()
+                comm.bcast(new_leader, root=MPI.COMM_WORLD.Get_rank())
+                logger.info(f"New leader elected: {new_leader}")
+            else:
+                logger.error(f"Worker {rank} failed: {e}")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

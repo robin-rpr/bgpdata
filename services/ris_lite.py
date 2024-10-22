@@ -59,7 +59,7 @@ async def main():
             broadcasted_batch = comm.bcast(None, root=0)
 
             if broadcasted_batch is None:
-                logger.info("No batch received. Sleeping for one second.")
+                #logger.info("No batch received. Sleeping for one second.")
                 await asyncio.sleep(1)
                 continue
 
