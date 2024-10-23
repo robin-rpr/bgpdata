@@ -33,7 +33,7 @@ def upgrade() -> None:
     op.create_table(
         'ris',
         sa.Column('id', sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column('global_id', sa.String(255), nullable=False),
+        sa.Column('checkpoint', sa.String(255), nullable=False),
         sa.Column('timestamp', sa.DateTime, nullable=False),
         sa.Column('peer_ip', sa.String(50), nullable=False),
         sa.Column('peer_as', sa.Integer, nullable=False),
