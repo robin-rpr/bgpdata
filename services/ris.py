@@ -1,15 +1,16 @@
-from datetime import datetime, timedelta
-from confluent_kafka import KafkaError
-from confluent_kafka.avro import AvroConsumer
-from confluent_kafka.avro.serializer import SerializerError
+from confluent_kafka import KafkaError, Consumer
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.exc import SQLAlchemyError
-from datetime import datetime
+from sqlalchemy import text
+from datetime import datetime, timedelta
+from io import BytesIO
 import asyncio
+import traceback
+import fastavro
 import logging
 import json
-import re
 import os
+import re
 
 # Custom JSON encoder that converts datetime objects to ISO 8601 strings
 class DateTimeEncoder(json.JSONEncoder):
@@ -18,9 +19,9 @@ class DateTimeEncoder(json.JSONEncoder):
             return obj.isoformat()
         return super().default(obj)
 
-# Initialize logging
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 # Create the engine and session for PostgreSQL
 engine = create_async_engine(os.getenv("POSTGRESQL_DATABASE"), echo=False, future=True)
@@ -33,14 +34,45 @@ KAFKA_GROUP_ID = 'bgpdata'
 consumer_conf = {
     'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS,
     'group.id': KAFKA_GROUP_ID,
+    'partition.assignment.strategy': 'roundrobin',
     'auto.offset.reset': 'earliest',  # Start from the earliest offset if no previous offsets are found
     'enable.auto.commit': False,      # We will manually commit the offsets
     'security.protocol': 'SASL_SSL',
     'sasl.mechanism': 'PLAIN',
     'sasl.username': os.getenv("SASL_KAFKA_USERNAME"),
     'sasl.password': os.getenv("SASL_KAFKA_PASSWORD"),
-    'schema.registry.url': 'http://node01.kafka-pub.ris.ripe.net:8081',
-    'specific.avro.reader': 'true'
+}
+
+avro_schema = {
+    "type": "record",
+    "name": "RisLiveBinary",
+    "namespace": "net.ripe.ris.live",
+    "fields": [
+        {
+          "name": "type",
+          "type": {
+            "type": "enum",
+            "name": "MessageType",
+            "symbols": ["STATE", "OPEN", "UPDATE", "NOTIFICATION", "KEEPALIVE"],
+          },
+        },
+        { "name": "timestamp", "type": "long" },
+        { "name": "host", "type": "string" },
+        { "name": "peer", "type": "bytes" },
+        {
+          "name": "attributes",
+          "type": { "type": "array", "items": "int" },
+          "default": [],
+        },
+        {
+          "name": "prefixes",
+          "type": { "type": "array", "items": "bytes" },
+          "default": [],
+        },
+        { "name": "path", "type": { "type": "array", "items": "long" }, "default": [] },
+        { "name": "ris_live", "type": "string" },
+        { "name": "raw", "type": "string" },
+    ],
 }
 
 def decompress(data) -> list[dict]:
@@ -134,8 +166,8 @@ def aggregate_ris_lite(messages: list[dict], two_hops=False) -> dict:
 
     # Aggregate by origin and segment (AS path)
     for msg in messages:
-        if msg['as_path']:
-            as_path = msg['as_path'].split()
+        if len(msg['as_path']) > 0:
+            as_path = msg['as_path']
 
             # Origin AS is the last in the path
             origin = as_path[-1]
@@ -144,7 +176,7 @@ def aggregate_ris_lite(messages: list[dict], two_hops=False) -> dict:
 
             path = (first_hop, origin) if first_hop else (origin,)
 
-            key = (path, msg['prefix'], msg['collector'])
+            key = (path, msg['prefix'], msg['host'])
             if key not in aggregation:
                 aggregation[key] = {
                     'full_peer_count': 0,
@@ -165,20 +197,20 @@ def aggregate_ris_lite(messages: list[dict], two_hops=False) -> dict:
     data_tuples = [
         (
             datetime.now(),  # Use current timestamp for now
-            collector,
+            host,
             prefix,
             data['full_peer_count'],
             data['partial_peer_count'],
-            ','.join(path)  # Store path as a string
+            path
         )
-        for (path, prefix, collector), data in aggregation.items()
+        for (path, prefix, host), data in aggregation.items()
     ]
 
     return data_tuples
 
 # Main function to consume messages from Kafka
 async def main():
-    consumer = AvroConsumer(consumer_conf)
+    consumer = Consumer(consumer_conf)
     consumer.subscribe([KAFKA_TOPIC])
 
     # Initialize settings for batch processing
@@ -191,9 +223,11 @@ async def main():
     messages_batch = []
     messages_size = 0
 
+    poll_interval = NORMAL_POLL_INTERVAL  # Initialize with the normal poll interval
+
     try:
         while True:
-            msg = consumer.poll(NORMAL_POLL_INTERVAL)
+            msg = consumer.poll(timeout=poll_interval)  # Use dynamically set poll_interval
             
             if msg is None:
                 continue
@@ -206,22 +240,29 @@ async def main():
                 continue
 
             try:
-                parsed = json.loads(msg.value())
-                messages = decompress(parsed)
+                key = msg.key()
+                value = msg.value()
 
-                logger.info(f"Received message from Kafka: {messages}")
+                # Remove the first 5 bytes
+                value = value[5:]
+                
+                # Deserialize the Avro message
+                parsed = fastavro.schemaless_reader(BytesIO(value), avro_schema)
+
+                # Skip if the message is not an UPDATE
+                if parsed['type'] != "UPDATE":
+                    continue
+
+                messages = decompress(json.loads(parsed['ris_live']))
                 
                 # Check if the message is significantly behind the current time
-                message_time = datetime.fromtimestamp(parsed['data']['timestamp'])
-                time_lag = datetime.now() - message_time
+                time_lag = datetime.now() - messages[0]['timestamp']
 
                 # Adjust polling interval based on how far behind the messages are
                 if time_lag > TIME_LAG_THRESHOLD:
-                    poll_interval = CATCHUP_POLL_INTERVAL
-                    logger.info(f"Processing older message, time lag: {time_lag}. Using fast poll interval.")
+                    poll_interval = CATCHUP_POLL_INTERVAL  # Faster polling if we're behind
                 else:
-                    poll_interval = NORMAL_POLL_INTERVAL
-                    logger.info(f"Processing recent message. Using normal poll interval.")
+                    poll_interval = NORMAL_POLL_INTERVAL  # Slow down if we're caught up
 
                 # Add messages to the batch
                 messages_batch.extend(messages)
@@ -237,7 +278,7 @@ async def main():
                     async with engine.begin() as conn:
                         try:
                             # Start a transaction
-                            await conn.execute("BEGIN")
+                            await conn.execute(text("BEGIN"))
                             
                             raw_conn = await conn.get_raw_connection()
                             
@@ -252,16 +293,16 @@ async def main():
                             await raw_conn._connection.copy_records_to_table(
                                 'ris_lite', 
                                 records=ris_lite_data, 
-                                columns=['timestamp', 'collector', 'prefix', 'full_peer_count', 'partial_peer_count', 'segment']
+                                columns=['timestamp', 'host', 'prefix', 'full_peer_count', 'partial_peer_count', 'segment']
                             )
                             
                             # If both operations succeed, commit the transaction
-                            await conn.execute("COMMIT")
+                            await conn.execute(text("COMMIT"))
                             logger.info(f"Successfully inserted {len(ris_data)} records into 'ris' and {len(ris_lite_data)} records into 'ris_lite'")
                         
                         except SQLAlchemyError as e:
                             # If an exception occurs, explicitly roll back the transaction
-                            await conn.execute("ROLLBACK")
+                            await conn.execute(text("ROLLBACK"))
                             logger.error(f"Error during database insertion, transaction rolled back: {e}")
                             raise  # Re-raise the exception
 
@@ -275,12 +316,12 @@ async def main():
                     messages_size = 0
 
             except Exception as e:
-                logger.error(f"Failed to process message, retrying in {FAILURE_RETRY_DELAY} seconds... Error: {e}")
+                logger.error("Failed to process message, retrying in %d seconds...", FAILURE_RETRY_DELAY, exc_info=True)
                 # Wait before retrying the message to avoid overwhelming Kafka
                 await asyncio.sleep(FAILURE_RETRY_DELAY)
 
     except Exception as e:
-        logger.error(f"Error: {e}")
+        logger.error("Fatal error", exc_info=True)
     finally:
         consumer.close()
 

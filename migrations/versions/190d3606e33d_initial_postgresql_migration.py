@@ -61,6 +61,7 @@ def upgrade() -> None:
         'ris_lite',
         sa.Column('id', sa.Integer, primary_key=True, autoincrement=True),
         sa.Column('timestamp', sa.DateTime, nullable=False),
+        sa.Column('host', sa.String(50), nullable=False),
         sa.Column('prefix', sa.String(50), nullable=False),
         sa.Column('full_peer_count', sa.Integer, nullable=False),
         sa.Column('partial_peer_count', sa.Integer, nullable=False),
