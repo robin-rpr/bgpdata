@@ -8,16 +8,23 @@ import asyncio
 import traceback
 import fastavro
 import logging
+import socket
 import json
 import os
 import re
 
-# Custom JSON encoder that converts datetime objects to ISO 8601 strings
 class DateTimeEncoder(json.JSONEncoder):
+    """
+    Custom JSON encoder that converts datetime objects to ISO 8601 strings.
+    """
     def default(self, obj):
         if isinstance(obj, datetime):
             return obj.isoformat()
         return super().default(obj)
+
+# Get the hostname and process ID
+hostname = socket.gethostname()  # Get the machine's hostname
+pid = os.getpid()  # Get the current process ID
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -29,14 +36,13 @@ engine = create_async_engine(os.getenv("POSTGRESQL_DATABASE"), echo=False, futur
 # Kafka Consumer configuration
 KAFKA_BOOTSTRAP_SERVERS = 'node01.kafka-pub.ris.ripe.net:9094,node02.kafka-pub.ris.ripe.net:9094,node03.kafka-pub.ris.ripe.net:9094'
 KAFKA_TOPIC = 'ris-live'
-KAFKA_GROUP_ID = 'bgpdata'
+KAFKA_GROUP_ID = f"bgpdata-{hostname}:{pid}"
 
 consumer_conf = {
     'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS,
     'group.id': KAFKA_GROUP_ID,
     'partition.assignment.strategy': 'roundrobin',
-    'auto.offset.reset': 'earliest',  # Start from the earliest offset if no previous offsets are found
-    'enable.auto.commit': False,      # We will manually commit the offsets
+    'enable.auto.commit': False,  # Disable automatic offset commit, handle manually
     'security.protocol': 'SASL_SSL',
     'sasl.mechanism': 'PLAIN',
     'sasl.username': os.getenv("SASL_KAFKA_USERNAME"),
@@ -208,10 +214,69 @@ def aggregate_ris_lite(messages: list[dict], two_hops=False) -> dict:
 
     return data_tuples
 
-# Main function to consume messages from Kafka
+# Callback to handle partition rebalancing
+def on_rebalance(consumer, partitions):
+    """
+    Callback function to handle partition rebalancing.
+
+    This function is called when the consumer's partitions are rebalanced. It logs the
+    assigned partitions and handles any errors that occur during the rebalancing process.
+
+    Args:
+        consumer: The Kafka consumer instance.
+        partitions: A list of TopicPartition objects representing the newly assigned partitions.
+    """
+    try:
+        if partitions[0].error:
+            logger.error(f"Rebalance error: {partitions[0].error}")
+        else:
+            logger.info(f"Assigned partitions: {[p.partition for p in partitions]}")
+            consumer.assign(partitions)
+    except Exception as e:
+        logger.error(f"Error handling rebalance: {e}", exc_info=True)
+
+async def log_status(time_lag, poll_interval):
+    """
+    Periodically logs the time lag, number of inserted messages, and current poll interval.
+    This coroutine runs concurrently with the main processing loop.
+    
+    Args:
+        time_lag (timedelta): The current time lag of the messages.
+        poll_interval (float): The current polling interval in seconds.
+    """
+    while True:
+        await asyncio.sleep(5)  # Sleep for 5 seconds before logging
+        
+        logger.info(f"Time lag: {time_lag.total_seconds()} seconds, "
+                    f"Poll interval: {poll_interval} seconds")
+
 async def main():
+    """
+    Main function to consume messages from Kafka, process them, and insert into the database.
+
+    This asynchronous function sets up a Kafka consumer, subscribes to the specified topic,
+    and continuously polls for messages. It processes messages in batches, dynamically
+    adjusts polling intervals based on message lag, and handles various error scenarios.
+
+    The function performs the following key operations:
+    1. Sets up a Kafka consumer with specified configuration and callbacks.
+    2. Implements batch processing of messages with a configurable threshold.
+    3. Dynamically adjusts polling intervals based on message time lag.
+    4. Processes messages, including deserialization and filtering.
+    5. Inserts processed data into the database in batches.
+    6. Handles various error scenarios and implements retry logic.
+
+    The function runs indefinitely until interrupted or an unhandled exception occurs.
+    """
     consumer = Consumer(consumer_conf)
     consumer.subscribe([KAFKA_TOPIC])
+
+    # Set up callbacks
+    consumer.subscribe(
+        [KAFKA_TOPIC],
+        on_assign=on_rebalance,
+        on_revoke=lambda c, p: logger.info(f"Revoked partitions: {[part.partition for part in p]}")
+    )
 
     # Initialize settings for batch processing
     BATCH_THRESHOLD = 10000
@@ -224,6 +289,10 @@ async def main():
     messages_size = 0
 
     poll_interval = NORMAL_POLL_INTERVAL  # Initialize with the normal poll interval
+    time_lag = timedelta(0)               # Initialize time lag
+
+    # Start logging task with time_lag and poll_interval being updated within the loop
+    logging_task = asyncio.create_task(log_status(time_lag, poll_interval))
 
     try:
         while True:
@@ -234,9 +303,11 @@ async def main():
 
             if msg.error():
                 if msg.error().code() == KafkaError._PARTITION_EOF:
-                    logger.info(f"End of partition reached {msg.partition()}")
-                elif msg.error():
-                    logger.error(f"Kafka error: {msg.error()}")
+                    logger.info(f"End of partition reached: {err}")
+                elif msg.error().code() == KafkaError._THROTTLING:
+                    logger.warning(f"Kafka throttle event: {err}")
+                else:
+                    logger.error(f"Kafka error: {err}", exc_info=True)
                 continue
 
             try:
@@ -260,9 +331,9 @@ async def main():
 
                 # Adjust polling interval based on how far behind the messages are
                 if time_lag > TIME_LAG_THRESHOLD:
-                    poll_interval = CATCHUP_POLL_INTERVAL  # Faster polling if we're behind
+                    poll_interval = CATCHUP_POLL_INTERVAL # Faster polling if we're behind
                 else:
-                    poll_interval = NORMAL_POLL_INTERVAL  # Slow down if we're caught up
+                    poll_interval = NORMAL_POLL_INTERVAL # Slow down if we're caught up
 
                 # Add messages to the batch
                 messages_batch.extend(messages)
@@ -298,7 +369,6 @@ async def main():
                             
                             # If both operations succeed, commit the transaction
                             await conn.execute(text("COMMIT"))
-                            logger.info(f"Successfully inserted {len(ris_data)} records into 'ris' and {len(ris_lite_data)} records into 'ris_lite'")
                         
                         except SQLAlchemyError as e:
                             # If an exception occurs, explicitly roll back the transaction
@@ -324,6 +394,8 @@ async def main():
         logger.error("Fatal error", exc_info=True)
     finally:
         consumer.close()
+        # Cancel the logging task when exiting
+        logging_task.cancel()
 
 if __name__ == "__main__":
     asyncio.run(main())
