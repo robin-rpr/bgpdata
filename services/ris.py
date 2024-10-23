@@ -311,7 +311,6 @@ async def main():
                 continue
 
             try:
-                key = msg.key()
                 value = msg.value()
 
                 # Remove the first 5 bytes
@@ -324,7 +323,12 @@ async def main():
                 if parsed['type'] != "UPDATE":
                     continue
 
+                # Decompress to extract the messages
                 messages = decompress(json.loads(parsed['ris_live']))
+
+                # Check if the message is empty
+                if len(messages) == 0:
+                    raise ValueError(f"Received an empty message list, which should not happen. Parsed data: {parsed}")
                 
                 # Check if the message is significantly behind the current time
                 time_lag = datetime.now() - messages[0]['timestamp']
@@ -387,6 +391,8 @@ async def main():
 
             except Exception as e:
                 logger.error("Failed to process message, retrying in %d seconds...", FAILURE_RETRY_DELAY, exc_info=True)
+                # Log the failed message for debugging
+                logger.debug(f"Failed message: {value}")
                 # Wait before retrying the message to avoid overwhelming Kafka
                 await asyncio.sleep(FAILURE_RETRY_DELAY)
 
