@@ -36,12 +36,12 @@ def upgrade() -> None:
         sa.Column('checkpoint', sa.String(255), nullable=False),
         sa.Column('timestamp', sa.DateTime, nullable=False),
         sa.Column('peer_ip', sa.String(50), nullable=False),
-        sa.Column('peer_as', sa.Integer, nullable=False),
+        sa.Column('peer_as', sa.BigInteger, nullable=False),
         sa.Column('host', sa.String(50), nullable=False),
         sa.Column('type', sa.String(1), nullable=False),  # A: Announcement, W: Withdrawal
-        sa.Column('as_path', postgresql.ARRAY(sa.Integer), nullable=True),
-        sa.Column('as_set', postgresql.ARRAY(sa.Integer), nullable=True),
-        sa.Column('community', postgresql.ARRAY(sa.Integer, dimensions=2), nullable=True),
+        sa.Column('as_path', postgresql.ARRAY(sa.BigInteger), nullable=True),
+        sa.Column('as_set', postgresql.ARRAY(sa.BigInteger), nullable=True),
+        sa.Column('community', postgresql.ARRAY(sa.BigInteger, dimensions=2), nullable=True),
         sa.Column('origin', sa.String(50), nullable=True),
         sa.Column('med', sa.Integer, nullable=True),
         sa.Column('aggregator', sa.String(50), nullable=True),
@@ -65,7 +65,7 @@ def upgrade() -> None:
         sa.Column('prefix', sa.String(50), nullable=False),
         sa.Column('full_peer_count', sa.Integer, nullable=False),
         sa.Column('partial_peer_count', sa.Integer, nullable=False),
-        sa.Column('segment', postgresql.ARRAY(sa.Integer), nullable=True),
+        sa.Column('segment', postgresql.ARRAY(sa.BigInteger), nullable=True),
         sa.PrimaryKeyConstraint('id', 'timestamp')
     )
 
