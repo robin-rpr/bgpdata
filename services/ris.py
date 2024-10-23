@@ -279,7 +279,7 @@ async def main():
     )
 
     # Initialize settings for batch processing
-    BATCH_THRESHOLD = 20
+    BATCH_THRESHOLD = 20000
     CATCHUP_POLL_INTERVAL = 1.0  # Fast poll when behind in time
     NORMAL_POLL_INTERVAL = 5.0   # Slow poll when caught up
     TIME_LAG_THRESHOLD = timedelta(minutes=5)  # Consider behind if messages are older than 5 minutes
@@ -392,7 +392,6 @@ async def main():
             except Exception as e:
                 logger.error("Failed to process message, retrying in %d seconds...", FAILURE_RETRY_DELAY, exc_info=True)
                 # Wait before retrying the message to avoid overwhelming Kafka
-                logger.debug(f"Failed batch: {ris_data}")
                 await asyncio.sleep(FAILURE_RETRY_DELAY)
 
     except Exception as e:
