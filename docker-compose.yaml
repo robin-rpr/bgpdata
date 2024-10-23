@@ -1,5 +1,5 @@
 services:
-    # PostgreSQL service for your app
+    # PostgreSQL service
     postgres:
         image: timescale/timescaledb:latest-pg13
         container_name: postgres
@@ -18,7 +18,22 @@ services:
         volumes:
             - /Volumes/SDCARD/postgres_data:/var/lib/postgresql/data
 
-    # Flask application service
+    # Redis service
+    redis:
+        image: redis:latest
+        container_name: redis
+        restart: always
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+        environment:
+            - ALLOW_EMPTY_PASSWORD=yes
+        ports:
+            - "6379:6379"
+
+    # Flask service
     web:
         build: .
         container_name: web
@@ -45,7 +60,19 @@ services:
         entrypoint: >
             /bin/sh -c "alembic upgrade head && gunicorn --bind 0.0.0.0:8080 --workers 4 --worker-class uvicorn.workers.UvicornWorker --reload --log-level info --access-logfile - --error-logfile - 'app:asgi_app'"
 
-    # RIS stream consumer service
+    ####
+    # RIS (Routing Information System) services
+    #
+    # These services collect and aggregate BGP routing data from RIPE NCC's RIS project.
+    # They process real-time BGP updates, store them in the database, and provide
+    # aggregated views of the global routing table.
+    #
+    # The 'ris' service connects to RIPE NCC's Kafka stream, processes BGP messages,
+    # and stores them in the PostgreSQL database.
+    #
+    # The 'ris_peers' service periodically analyzes the collected data to identify
+    # and categorize RIS peers, storing this information in Redis for quick access.
+    ###
     ris:
         build: .
         container_name: ris
@@ -63,6 +90,23 @@ services:
             - .:/app
         entrypoint: >
             python services/ris.py
+
+    ris_peers:
+        build: .
+        container_name: ris_peers
+        environment:
+            - POSTGRESQL_DATABASE=postgresql+asyncpg://postgres:postgres@postgres:5432/default
+            - REDIS_DATABASE=redis://redis:6379
+        depends_on:
+            web:
+                condition: service_healthy
+            postgres:
+                condition: service_healthy
+        working_dir: /app
+        volumes:
+            - .:/app
+        entrypoint: >
+            python services/ris_peers.py
 
 # Define volumes
 volumes:

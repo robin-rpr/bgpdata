@@ -24,19 +24,15 @@ class DateTimeEncoder(json.JSONEncoder):
 
 # Get the hostname and process ID
 hostname = socket.gethostname()  # Get the machine's hostname
-pid = os.getpid()  # Get the current process ID
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Create the engine and session for PostgreSQL
-engine = create_async_engine(os.getenv("POSTGRESQL_DATABASE"), echo=False, future=True)
-
 # Kafka Consumer configuration
 KAFKA_BOOTSTRAP_SERVERS = 'node01.kafka-pub.ris.ripe.net:9094,node02.kafka-pub.ris.ripe.net:9094,node03.kafka-pub.ris.ripe.net:9094'
 KAFKA_TOPIC = 'ris-live'
-KAFKA_GROUP_ID = f"bgpdata-{hostname}:{pid}"
+KAFKA_GROUP_ID = f"bgpdata-{hostname}"
 
 consumer_conf = {
     'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS,
@@ -89,18 +85,22 @@ def decompress(data) -> list[dict]:
         data (dict): Raw BGP update data.
     
     Returns:
-        tuple: A tuple containing the checkpoint (str) and a list of decompressed messages (list[dict]).
+        tuple: A list of decompressed messages (list[dict]).
     """
     messages = []
 
-    if len(data['announcements']) > 0:
+    # Extract AS path and AS set
+    if data['path']:
         as_path = data['path'][:-1] if isinstance(data['path'][-1], list) else data['path']
         as_set = data['path'][-1] if isinstance(data['path'][-1], list) else None
+    else:
+        as_path = []
+        as_set = None
 
+    if len(data['announcements']) > 0:
         for announcement in data['announcements']:
             for prefix in announcement['prefixes']:
                 messages.append({
-                    "checkpoint": data['id'],
                     "timestamp": datetime.fromtimestamp(data['timestamp']),
                     "peer_ip": data['peer'],
                     "peer_as": int(data['peer_asn']),
@@ -119,13 +119,13 @@ def decompress(data) -> list[dict]:
     if len(data['withdrawals']) > 0:
         for prefix in data['withdrawals']:
             messages.append({
-                "checkpoint": data['id'],
                 "timestamp": datetime.fromtimestamp(data['timestamp']),
                 "peer_ip": data['peer'],
                 "peer_as": int(data['peer_asn']),
                 "host": data['host'],
                 "type": "W",
-                "as_path": data['path'],
+                "as_path": as_path,
+                "as_set": as_set,
                 "community": [],
                 "origin": data.get('origin', None),
                 "med": data.get('med', None),
@@ -136,24 +136,9 @@ def decompress(data) -> list[dict]:
 
     return messages
 
-def aggregate_ris(messages: list[dict]) -> dict:
-    """
-    Prepare RIS messages for the 'ris' table without modification (raw).
-
-    Args:
-        messages (list[dict]): A list of dictionaries, each containing a single RIS
-                               message with its original attributes.
-
-    Returns:
-        list[tuple]: A list of tuples, where each tuple represents a single RIS
-                     message in its raw form, ready for insertion into the 'ris' table.
-    """
-    data_tuples = [
-        (msg['checkpoint'], msg['timestamp'], msg['peer_ip'], msg['peer_as'], msg['host'], msg['type'], msg['as_path'], msg['community'], msg['origin'], msg['med'], msg['aggregator'], msg['next_hop'], msg['prefix'])
-        for msg in messages
-    ]
+def aggregate_ris_peers(messages: list[dict]) -> dict:
     
-    return data_tuples
+    pass
 
 def aggregate_ris_lite(messages: list[dict], two_hops=False) -> dict:
     """
@@ -177,12 +162,15 @@ def aggregate_ris_lite(messages: list[dict], two_hops=False) -> dict:
 
             # Origin AS is the last in the path
             origin = as_path[-1]
+
             # First hop is the second-to-last AS in the path (if present)
             first_hop = as_path[-2] if two_hops and len(as_path) > 1 else None
 
             path = (first_hop, origin) if first_hop else (origin,)
 
+            # Create a hashable key for the aggregation
             key = (path, msg['prefix'], msg['host'])
+
             if key not in aggregation:
                 aggregation[key] = {
                     'full_peer_count': 0,
@@ -235,7 +223,7 @@ def on_rebalance(consumer, partitions):
     except Exception as e:
         logger.error(f"Error handling rebalance: {e}", exc_info=True)
 
-async def log_status(time_lag, poll_interval):
+async def log_status(timestamp, time_lag, poll_interval):
     """
     Periodically logs the time lag, number of inserted messages, and current poll interval.
     This coroutine runs concurrently with the main processing loop.
@@ -247,7 +235,8 @@ async def log_status(time_lag, poll_interval):
     while True:
         await asyncio.sleep(5)  # Sleep for 5 seconds before logging
         
-        logger.info(f"Time lag: {time_lag.total_seconds()} seconds, "
+        logger.info(f"Timestamp: {timestamp}, "
+                    f"Time lag: {time_lag.total_seconds()} seconds, "
                     f"Poll interval: {poll_interval} seconds")
 
 async def main():
@@ -268,6 +257,10 @@ async def main():
 
     The function runs indefinitely until interrupted or an unhandled exception occurs.
     """
+    # Create database client
+    postgres = create_async_engine(os.getenv("POSTGRESQL_DATABASE"), echo=False, future=True)
+
+    # Create Kafka consumer
     consumer = Consumer(consumer_conf)
     consumer.subscribe([KAFKA_TOPIC])
 
@@ -290,9 +283,10 @@ async def main():
 
     poll_interval = NORMAL_POLL_INTERVAL  # Initialize with the normal poll interval
     time_lag = timedelta(0)               # Initialize time lag
+    timestamp = datetime.now()            # Initialize timestamp
 
-    # Start logging task with time_lag and poll_interval being updated within the loop
-    logging_task = asyncio.create_task(log_status(time_lag, poll_interval))
+    # Start logging task that is updated within the loop
+    logging_task = asyncio.create_task(log_status(timestamp, time_lag, poll_interval))
 
     try:
         while True:
@@ -331,7 +325,8 @@ async def main():
                     raise ValueError(f"Received an empty message list, which should not happen. Parsed data: {parsed}")
                 
                 # Check if the message is significantly behind the current time
-                time_lag = datetime.now() - messages[0]['timestamp']
+                timestamp = messages[0]['timestamp']
+                time_lag = datetime.now() - timestamp
 
                 # Adjust polling interval based on how far behind the messages are
                 if time_lag > TIME_LAG_THRESHOLD:
@@ -345,12 +340,14 @@ async def main():
 
                 # Process the batch when it reaches the threshold
                 if messages_size >= BATCH_THRESHOLD:
-                    # Aggregate messages
-                    ris_data = aggregate_ris(messages_batch)
-                    ris_lite_data = aggregate_ris_lite(messages_batch)
+                    # Convert to tuples
+                    records = [
+                        (msg['timestamp'], msg['peer_ip'], msg['peer_as'], msg['host'], msg['type'], msg['as_path'], msg['community'], msg['origin'], msg['med'], msg['aggregator'], msg['next_hop'], msg['prefix'])
+                        for msg in messages_batch
+                    ]
 
-                    # Write to the database
-                    async with engine.begin() as conn:
+                    # And write to Database
+                    async with postgres.begin() as conn:
                         try:
                             # Start a transaction
                             await conn.execute(text("BEGIN"))
@@ -360,15 +357,8 @@ async def main():
                             # Insert into 'ris' table
                             await raw_conn._connection.copy_records_to_table(
                                 'ris', 
-                                records=ris_data, 
-                                columns=['checkpoint', 'timestamp', 'peer_ip', 'peer_as', 'host', 'type', 'as_path', 'community', 'origin', 'med', 'aggregator', 'next_hop', 'prefix']
-                            )
-                            
-                            # Insert into 'ris_lite' table
-                            await raw_conn._connection.copy_records_to_table(
-                                'ris_lite', 
-                                records=ris_lite_data, 
-                                columns=['timestamp', 'host', 'prefix', 'full_peer_count', 'partial_peer_count', 'segment']
+                                records=records,
+                                columns=['timestamp', 'peer_ip', 'peer_as', 'host', 'type', 'as_path', 'community', 'origin', 'med', 'aggregator', 'next_hop', 'prefix']
                             )
                             
                             # If both operations succeed, commit the transaction

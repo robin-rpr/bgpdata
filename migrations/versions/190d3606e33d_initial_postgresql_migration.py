@@ -32,8 +32,7 @@ def upgrade() -> None:
     # RIS Table
     op.create_table(
         'ris',
-        sa.Column('id', sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column('checkpoint', sa.String(255), nullable=False),
+        sa.Column('id', sa.BigInteger, primary_key=True, autoincrement=True),
         sa.Column('timestamp', sa.DateTime, nullable=False),
         sa.Column('peer_ip', sa.String(50), nullable=False),
         sa.Column('peer_as', sa.BigInteger, nullable=False),
@@ -43,7 +42,7 @@ def upgrade() -> None:
         sa.Column('as_set', postgresql.ARRAY(sa.BigInteger), nullable=True),
         sa.Column('community', postgresql.ARRAY(sa.BigInteger, dimensions=2), nullable=True),
         sa.Column('origin', sa.String(50), nullable=True),
-        sa.Column('med', sa.Integer, nullable=True),
+        sa.Column('med', sa.BigInteger, nullable=True),
         sa.Column('aggregator', sa.String(50), nullable=True),
         sa.Column('next_hop', postgresql.ARRAY(sa.String(50)), nullable=True),
         sa.Column('prefix', sa.String(50), nullable=False),
@@ -59,7 +58,7 @@ def upgrade() -> None:
     # RIS Lite Table
     op.create_table(
         'ris_lite',
-        sa.Column('id', sa.Integer, primary_key=True, autoincrement=True),
+        sa.Column('id', sa.BigInteger, primary_key=True, autoincrement=True),
         sa.Column('timestamp', sa.DateTime, nullable=False),
         sa.Column('host', sa.String(50), nullable=False),
         sa.Column('prefix', sa.String(50), nullable=False),
