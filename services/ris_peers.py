@@ -1,7 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import text
-import aioredis
 import asyncio
 import logging
 import os
@@ -25,9 +24,8 @@ async def main():
     The function runs indefinitely, periodically updating peer information until interrupted or an unhandled exception occurs.
     """
 
-    # Create database clients
+    # Create database client
     postgres = create_async_engine(os.getenv("POSTGRESQL_DATABASE"), echo=False, future=True)
-    redis = await aioredis.from_url(os.getenv("REDIS_DATABASE"))
 
     while True:
         try:
@@ -37,14 +35,16 @@ async def main():
                         peer_ip, 
                         peer_as, 
                         CASE 
-                            WHEN prefix LIKE '%:%' THEN 6 
-                            ELSE 4 
+                            WHEN prefix LIKE '%:%' THEN 6 -- IPv6 addresses contain colons
+                            ELSE 4 -- IPv4 addresses do not contain colons
                         END AS prefix_ipversion, 
                         host,
-                        FLOOR(EXTRACT(EPOCH FROM timestamp) * 1000 / 28800000) * 28800000 AS dump,
+                        -- Set dump to the current timestamp when the query is run, ensuring it is timezone-aware
+                        CURRENT_TIMESTAMP AT TIME ZONE 'UTC' AS dump,
                         COUNT(prefix) AS prefix_count
                     FROM ris
-                    GROUP BY peer_ip, peer_as, prefix_ipversion, host, FLOOR(EXTRACT(EPOCH FROM timestamp) * 1000 / 28800000) * 28800000
+                    -- No filter on timestamp, so it processes all data from the ris table
+                    GROUP BY peer_ip, peer_as, prefix_ipversion, host
                 ),
                 filtered_peers AS (
                     SELECT *
@@ -61,12 +61,13 @@ async def main():
                         prefix_ipversion, 
                         host,
                         prefix_count,
-                        dump,  
+                        dump,  -- Include the current timestamp as the dump
                         ROW_NUMBER() OVER (PARTITION BY dump, prefix_ipversion ORDER BY prefix_count) AS row_num,
                         COUNT(*) OVER (PARTITION BY dump, prefix_ipversion) AS total_count
                     FROM filtered_peers
                 ),
                 prefix_medians AS (
+                    -- Calculate median based on the entire dataset in this query run
                     SELECT 
                         dump,
                         prefix_ipversion, 
@@ -83,7 +84,9 @@ async def main():
                     pc.prefix_count,
                     pc.dump,
                     CASE 
-                        WHEN pc.prefix_ipversion = 6 AND pc.dump < 1136073600000 THEN 'F'
+                        -- Automatically tag older IPv6 peers as full if their dump timestamp is before a certain date
+                        WHEN pc.prefix_ipversion = 6 AND pc.dump < '2006-01-01 00:00:00' THEN 'F'
+                        -- Tag peers as full if their prefix count is greater than 90% of the median
                         WHEN pc.prefix_count > pm.median_prefix_count * 0.9 THEN 'F'
                         ELSE 'P'
                     END AS peer_tag
@@ -103,43 +106,35 @@ async def main():
                     logger.error(f"Error during database query: {e}", exc_info=True)
                     raise  # Re-raise the exception
 
-            # Insert into Redis
-            try:
-                # Start a pipeline
-                pipe = redis.pipeline()
+            # Insert into PostgreSQL
+            async with postgres.begin() as conn:
+                try:
+                    # Start a transaction
+                    await conn.execute(text("BEGIN"))
 
-                # Check if the ris_peers table exists and delete it if it does
-                exists = await redis.exists('ris_peers')
-                if exists:
-                    # Delete the old table contents if it exists
-                    pipe.delete('ris_peers')
+                    raw_conn = await conn.get_raw_connection()
 
-                # Prepare all peer data in a bulk insert
-                for peer in ris_peers:
-                    # Store each peer as a hash or list based on your need
-                    peer_key = f"peer:{peer['peer_ip']}"
-                    # Add multiple HSETs to the pipeline, to be executed in bulk
-                    pipe.hset(peer_key, mapping={
-                        'peer_ip': peer['peer_ip'],
-                        'peer_as': peer['peer_as'],
-                        'prefix_ipversion': peer['prefix_ipversion'],
-                        'host': peer['host'],
-                        'prefix_count': peer['prefix_count'],
-                        'dump': peer['dump'],
-                        'peer_tag': peer['peer_tag']
-                    })
+                    # Insert into 'ris_peers' table
+                    await raw_conn._connection.copy_records_to_table(
+                        'ris_peers',
+                        records=ris_peers,
+                        columns=['peer_ip', 'peer_as', 'prefix_ipversion', 'host', 'prefix_count', 'dump', 'peer_tag']
+                    )
 
-                # Execute all operations in the pipeline as a transaction
-                await pipe.execute()
-                print("Redis transaction committed successfully with bulk insert.")
-            except Exception as e:
-                print(f"Error during Redis transaction: {e}")
-                # In case of an error, Redis will discard the transaction (DISCARD is automatic)
-                raise  # Re-raise the exception
+                    # Commit the transaction
+                    await conn.execute(text("COMMIT"))
+
+                    logger.info("Data inserted into ris_peers table successfully.")
+
+                except SQLAlchemyError as e:
+                    # Rollback the transaction in case of an error
+                    await conn.execute(text("ROLLBACK"))
+                    logger.error(f"Error during database insertion, transaction rolled back: {e}")
+                    raise  # Re-raise the exception
 
         except Exception as e:
             logger.error("Error", exc_info=True)
-            # Wait before retrying the message to avoid overwhelming the system
+            # Wait before retrying to avoid overwhelming the system
             await asyncio.sleep(5)
 
 if __name__ == "__main__":

@@ -52,29 +52,30 @@ def upgrade() -> None:
     # Convert the table to a TimescaleDB hypertable
     op.execute("SELECT create_hypertable('ris', 'timestamp', if_not_exists => TRUE);")
 
-    # Add a retention policy to automatically drop data older than 48 hours
+    # Add a retention policy to automatically drop data older than certain hours
     op.execute("SELECT add_retention_policy('ris', INTERVAL '24 hours');")
 
-    # RIS Lite Table
+    # RIS Peers Table
     op.create_table(
-        'ris_lite',
+        'ris_peers',
         sa.Column('id', sa.BigInteger, primary_key=True, autoincrement=True),
-        sa.Column('timestamp', sa.DateTime, nullable=False),
+        sa.Column('peer_ip', sa.String(50), nullable=False),
+        sa.Column('peer_as', sa.BigInteger, nullable=False),
+        sa.Column('prefix_ipversion', sa.Integer, nullable=False),
         sa.Column('host', sa.String(50), nullable=False),
-        sa.Column('prefix', sa.String(50), nullable=False),
-        sa.Column('full_peer_count', sa.Integer, nullable=False),
-        sa.Column('partial_peer_count', sa.Integer, nullable=False),
-        sa.Column('segment', postgresql.ARRAY(sa.BigInteger), nullable=True),
-        sa.PrimaryKeyConstraint('id', 'timestamp')
+        sa.Column('prefix_count', sa.Integer, nullable=False),
+        sa.Column('dump',  sa.DateTime, nullable=False),
+        sa.Column('peer_tag', sa.String(1), nullable=True),
+        sa.PrimaryKeyConstraint('id', 'dump')
     )
 
     # Convert the table to a TimescaleDB hypertable
-    op.execute("SELECT create_hypertable('ris_lite', 'timestamp', if_not_exists => TRUE);")
+    op.execute("SELECT create_hypertable('ris_peers', 'dump', if_not_exists => TRUE);")
 
-    # Add a retention policy to automatically drop data older than 48 hours
-    op.execute("SELECT add_retention_policy('ris_lite', INTERVAL '24 hours');")
+    # Add a retention policy to automatically drop data older than certain hours
+    op.execute("SELECT add_retention_policy('ris_peers', INTERVAL '24 hours');")
 
 def downgrade() -> None:
     op.drop_table('users')
     op.drop_table('ris')
-    op.drop_table('ris_lite')
+    op.drop_table('ris_peers')
