@@ -20,6 +20,7 @@ services:
     core-db:
         image: timescale/timescaledb:latest-pg13
         container_name: core-db
+        restart: unless-stopped
         healthcheck:
             test: ["CMD-SHELL", "pg_isready -U core"]
             interval: 30s
@@ -37,6 +38,7 @@ services:
     core-web:
         build: .
         container_name: core-web
+        restart: unless-stopped
         healthcheck:
             test: ["CMD", "curl", "-f", "http://localhost:8080"]
             interval: 30s
@@ -62,6 +64,7 @@ services:
     core-collector:
         build: .
         container_name: core-collector
+        restart: unless-stopped
         environment:
             - POSTGRESQL_DATABASE=postgresql+asyncpg://core:core@core-db:5432/default
             - SASL_KAFKA_USERNAME=public
@@ -130,6 +133,7 @@ services:
         container_name: openbmp-db
         image: openbmp/postgres:2.2.1
         platform: linux/amd64
+        restart: unless-stopped
         healthcheck:
             test: ["CMD-SHELL", "pg_isready -U openbmp"]
             interval: 30s
@@ -157,6 +161,7 @@ services:
         container_name: openbmp-app
         image: openbmp/psql-app:2.2.2
         platform: linux/amd64
+        restart: unless-stopped
         healthcheck:
             test: ["CMD", "curl", "-f", "http://localhost:9005"]
             interval: 30s
@@ -210,6 +215,7 @@ services:
         restart: unless-stopped
         container_name: openbmp-collector
         platform: linux/amd64
+        restart: unless-stopped
         healthcheck:
             test: ["CMD-SHELL", "cat", "< /dev/null >", "/dev/tcp/localhost/5000"]
             interval: 30s
@@ -229,6 +235,7 @@ services:
         container_name: openbmp-whois
         image: openbmp/whois:2.2.0
         platform: linux/amd64
+        restart: unless-stopped
         healthcheck:
             test: ["CMD", "curl", "-f", "http://localhost:43"]
             interval: 30s
@@ -298,6 +305,7 @@ services:
     openbmp-grafana:
         container_name: openbmp-grafana
         image: grafana/grafana:9.1.7
+        restart: unless-stopped
         healthcheck:
             test: ["CMD", "curl", "-f", "http://localhost:3000"]
             interval: 30s

@@ -11,6 +11,7 @@ import socket
 import time
 import json
 import zlib
+import sys
 import os
 import re
 
@@ -800,8 +801,8 @@ async def main():
                 logger.error(f"Unable to connect to OpenBMP collector within {timeout} seconds")
                 raise Exception(f"Unable to connect to OpenBMP collector within {timeout} seconds") from e
             else:
-                logger.warning(f"Connection failed, retrying in 0.5 seconds... ({elapsed_time:.1f}s elapsed)")
-                await asyncio.sleep(0.5)  # Wait before retrying
+                logger.warning(f"Connection failed, retrying in 1 seconds... ({elapsed_time:.1f}s elapsed)")
+                await asyncio.sleep(1)  # Wait before retrying
         except Exception as e:
             # Handle other exceptions
             logger.error("An unexpected error occurred while trying to connect to OpenBMP collector", exc_info=True)
@@ -884,7 +885,17 @@ async def main():
                     batched = b''.join(messages_batch)
 
                     # Send the batch of messages over the persistent TCP connection
-                    sock.sendall(batched)
+                    try:
+                        sock.sendall(batched)
+                    except Exception as e:
+                        # Log the error and inform about the termination
+                        logger.error("TCP connection ended unexpectedly or encountered an error. The service will terminate in 10 seconds.", exc_info=True)
+
+                        # Wait for 10 seconds before terminating
+                        await asyncio.sleep(10)
+
+                        # Exit the service
+                        sys.exit("Service terminated due to broken TCP connection, exiting.")
 
                     logger.info(f"Sent {messages_size} BMP messages to OpenBMP")
 
