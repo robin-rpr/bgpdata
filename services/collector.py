@@ -995,19 +995,19 @@ async def main():
                 messages = converter.exabgp_to_bmp(parsed['ris_live'])
                 
                 # Send each BMP message individually over the persistent TCP connection
-                try:
-                    for message in messages:
+                for message in messages:
+                    
+                    try:
                         # Send the message over the persistent TCP connection
-                        sock.sendall(message)
-
+                        await loop.sock_sendall(sock, message)
                         # Update the bytes sent counter
                         status['bytes_sent_since_last_log'] += len(message)
-
-                except Exception as e:
-                    # Handle exceptions
-                    logger.error("TCP connection ended unexpectedly or encountered an error. The service will terminate in 10 seconds.", exc_info=True)
-                    await asyncio.sleep(10)
-                    sys.exit("Service terminated due to broken TCP connection, exiting.")
+                    except Exception as e:
+                        logger.error("Error occurred while sending data over the socket.", exc_info=True)
+                        # Wait 10 seconds before retrying
+                        await asyncio.sleep(10)
+                        # Exit the service
+                        sys.exit("Service terminated due to broken TCP connection, exiting 1.")
 
                 # Commit the offset after successful processing and transmission
                 consumer.commit()
