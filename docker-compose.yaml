@@ -212,7 +212,6 @@ services:
             - POSTGRES_DROP_stats_peer_update_counts='4 weeks'
 
     openbmp-collector:
-        restart: unless-stopped
         container_name: openbmp-collector
         platform: linux/amd64
         restart: unless-stopped

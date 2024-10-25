@@ -149,6 +149,8 @@ class BMPConverter:
                 prefixes = announcement['prefixes']
                 # Split next_hop into a list of addresses
                 next_hop_addresses = [nh.strip() for nh in next_hop.split(',')]
+
+                # Determine the AFI based on the first prefix
                 afi = 1  # IPv4
                 if ':' in prefixes[0]:
                     afi = 2  # IPv6
@@ -828,9 +830,9 @@ async def main():
     messages_batch = []
     messages_size = 0
 
-    poll_interval = NORMAL_POLL_INTERVAL  # Initialize with the normal poll interval
-    time_lag = timedelta(0)               # Initialize time lag
-    timestamp = datetime.now()            # Initialize timestamp
+    poll_interval = NORMAL_POLL_INTERVAL      # Initialize with the normal poll interval
+    time_lag = timedelta(0)                   # Initialize time lag
+    timestamp = datetime.now()                # Initialize timestamp
 
     # Start logging task that is updated within the loop
     logging_task = asyncio.create_task(log_status(timestamp, time_lag, poll_interval))
@@ -858,8 +860,8 @@ async def main():
                 else:
                     poll_interval = NORMAL_POLL_INTERVAL # Slow down if we're caught up
 
-                # Check if we've reached the batch threshold (non-strict)
-                if messages_size <= BATCH_THRESHOLD:
+                # Check if we've reached the batch threshold
+                if messages_size < BATCH_THRESHOLD:
                     # We've not reached the batch threshold, process the message.
                     value = msg.value()
 
