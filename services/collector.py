@@ -8,6 +8,7 @@ import logging
 import asyncio
 import struct
 import socket
+import time
 import json
 import zlib
 import os
@@ -776,10 +777,35 @@ async def main():
     consumer = Consumer(consumer_conf)
     consumer.subscribe(['ris-live'])
 
-    # Create OpenBMP Socket
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # Disable Nagle's algorithm for low-latency sending
-    sock.connect((os.getenv('OPENBMP_COLLECTOR_HOST'), int(os.getenv('OPENBMP_COLLECTOR_PORT'))))  # Persistent connection to OpenBMP Collector
+    # Create OpenBMP Socket with retry until timeout
+    timeout = int(os.getenv('OPENBMP_COLLECTOR_TIMEOUT', 30))  # Default to 30 seconds if not set
+    host = os.getenv('OPENBMP_COLLECTOR_HOST')
+    port = int(os.getenv('OPENBMP_COLLECTOR_PORT'))
+
+    loop = asyncio.get_event_loop()
+    start_time = time.time()
+
+    while True:
+        try:
+            # Create a non-blocking socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setblocking(False)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # Disable Nagle's algorithm for low-latency sending
+            await loop.sock_connect(sock, (host, port))  # Attempt to connect
+            logger.info(f"Connected to OpenBMP collector at {host}:{port}")
+            break  # Success
+        except (OSError, socket.error) as e:
+            elapsed_time = time.time() - start_time
+            if elapsed_time >= timeout:
+                logger.error(f"Unable to connect to OpenBMP collector within {timeout} seconds")
+                raise Exception(f"Unable to connect to OpenBMP collector within {timeout} seconds") from e
+            else:
+                logger.warning(f"Connection failed, retrying in 0.5 seconds... ({elapsed_time:.1f}s elapsed)")
+                await asyncio.sleep(0.5)  # Wait before retrying
+        except Exception as e:
+            # Handle other exceptions
+            logger.error("An unexpected error occurred while trying to connect to OpenBMP collector", exc_info=True)
+            raise
 
     # Initialize the converter
     converter = BMPConverter()
@@ -792,7 +818,7 @@ async def main():
     )
 
     # Initialize settings for batch processing
-    BATCH_THRESHOLD = 20000
+    BATCH_THRESHOLD = 15000
     CATCHUP_POLL_INTERVAL = 1.0               # Fast poll when behind in time
     NORMAL_POLL_INTERVAL = 5.0                # Slow poll when caught up
     TIME_LAG_THRESHOLD = timedelta(minutes=5) # Consider behind if messages are older than 5 minutes
@@ -858,7 +884,7 @@ async def main():
                     # Send the batch of messages over the persistent TCP connection
                     sock.sendall(batched)
 
-                    print(f"Sent {messages_size} BMP messages to OpenBMP")
+                    logger.info(f"Sent {messages_size} BMP messages to OpenBMP")
 
                     # Reset the batch
                     messages_batch = []
