@@ -91,7 +91,7 @@ class BMPConverter:
     # Author: Robin Röper <rroeper@ripe.net>
     """
     # BMP header lengths (not counting the version in the common hdr)
-    BMP_HDRv3_LEN = 5             # BMP v3 header length, not counting the version
+    BMP_HDRv3_LEN = 6             # BMP v3 header length, not counting the version
     BMP_HDRv1v2_LEN = 43
     BMP_PEER_HDR_LEN = 42         # BMP peer header length
     BMP_INFO_TLV_HDR_LEN = 4      # BMP info message header length, does not count the info field
@@ -445,46 +445,61 @@ class BMPConverter:
         path_attributes = b''
         nlri = b''
 
-        # Process 'withdraw'
-        #if 'withdrawn_routes' in update_message:
-        #    # Withdrawn Routes
-        #    withdraw = update_message['withdrawn_routes']
-        #    for afi_safi in withdraw:
-        #        prefixes = withdraw[afi_safi]
-        #        for prefix in prefixes:
-        #            prefix_bytes = self.encode_prefix(prefix)
-        #            withdrawn_routes += prefix_bytes
-#
-        #    withdrawn_routes_length = len(withdrawn_routes)
-
         # Process 'withdrawn_routes'
         if 'withdrawn_routes' in update_message:
             withdrawn_routes = update_message['withdrawn_routes']
             withdrawn_routes_length = len(withdrawn_routes)
 
-        # Process 'attribute'
-        if 'attribute' in update_message:
-            # Path Attributes
-            attributes = update_message['attribute']
-            path_attributes = self.encode_path_attributes(attributes)
-            total_path_attribute_length = len(path_attributes)
-
         # Process 'announce'
         if 'announce' in update_message:
             # NLRI
             announce = update_message['announce']
+            # Prepare lists to hold IPv4 and IPv6 prefixes
+            ipv4_prefixes = []
+            ipv6_prefixes = []
             for afi_safi in announce:
                 prefixes_dict = announce[afi_safi]
                 for prefix in prefixes_dict:
                     prefix_bytes = self.encode_prefix(prefix)
                     if ':' in prefix:
-                        nlri += b'' # Empty for IPv6
+                        ipv6_prefixes.append(prefix_bytes)
                     else:
-                        nlri += prefix_bytes
+                        ipv4_prefixes.append(prefix_bytes)
 
-        # Process the Network Layer Reachability Information or NLRI
-        if 'nlri' in update_message:
-            nlri = update_message['nlri']
+            # For IPv4, include prefixes in NLRI field
+            if ipv4_prefixes:
+                nlri += b''.join(ipv4_prefixes)
+
+            # For IPv6, include prefixes in MP_REACH_NLRI attribute
+            if ipv6_prefixes:
+                # Build MP_REACH_NLRI attribute
+                afi = 2  # IPv6
+                safi = 1  # Unicast
+                next_hop = update_message['attribute'].get('next-hop', ['::'])[0]
+                next_hop_bytes = socket.inet_pton(socket.AF_INET6, next_hop)
+                nh_length = len(next_hop_bytes)
+                nlri_bytes = b''.join(ipv6_prefixes)
+                mp_reach_nlri = struct.pack('!HBB', afi, safi, nh_length) + next_hop_bytes + b'\x00' + nlri_bytes
+
+                # Add the MP_REACH_NLRI attribute to the path attributes
+                attr_flags = 0x80  # Optional
+                attr_type = 14  # MP_REACH_NLRI
+                attr_length = len(mp_reach_nlri)
+                if attr_length > 255:
+                    attr_flags |= 0x10  # Extended Length
+                    path_attributes += struct.pack('!BBH', attr_flags, attr_type, attr_length)
+                else:
+                    path_attributes += struct.pack('!BBB', attr_flags, attr_type, attr_length)
+                path_attributes += mp_reach_nlri
+
+        # Process 'attribute'
+        if 'attribute' in update_message:
+            attributes = update_message['attribute']
+            # Now encode other path attributes
+            path_attributes += self.encode_path_attributes(attributes)
+
+        # Update total_path_attribute_length after adding all attributes
+        total_path_attribute_length = len(path_attributes)
 
         # Build the UPDATE message
         # Withdrawn Routes Length (2 bytes)
@@ -493,18 +508,23 @@ class BMPConverter:
         # Total Path Attribute Length (2 bytes)
         bgp_update += struct.pack('!H', total_path_attribute_length)
         bgp_update += path_attributes
-        # NLRI
+        # NLRI (only for IPv4 prefixes)
         bgp_update += nlri
 
         # Now build the BGP Message Header
         # Marker: 16 bytes of 0xFF
         marker = b'\xFF' * 16
-        length = 19 + len(bgp_update)
+        length = 19 + len(bgp_update)  # Correct total length
         msg_type = 2  # UPDATE message
 
-        bgp_message = marker + struct.pack('!HB', length, msg_type) + bgp_update
+        # Correctly pack the header
+        bgp_common_header = struct.pack('!HB', length, msg_type)
+
+        # Build the full BGP message
+        bgp_message = marker + bgp_common_header + bgp_update
 
         return bgp_message
+
 
     def encode_prefix(self, prefix):
         """
@@ -731,6 +751,35 @@ class BMPConverter:
         bgp_message = marker + struct.pack('!HB', length, msg_type) + notification
 
         return bgp_message
+    
+    def build_peer_distinguisher(self, rd_type, admin_subfield, assigned_number):
+        """
+        Build the Peer Distinguisher.
+
+        Args:
+            rd_type (int): The Route Distinguisher type (0, 1, or 2).
+            admin_subfield (int): The administrative subfield.
+            assigned_number (int): The assigned number.
+
+        Returns:
+            bytes: The 8-byte Peer Distinguisher.
+        """
+
+        # Pack the RD Type (2 bytes)
+        rd_type_bytes = struct.pack('!H', rd_type)
+
+        if rd_type == 0:
+            # Type 0: admin_subfield (2 bytes), assigned_number (4 bytes)
+            admin_bytes = struct.pack('!H', admin_subfield)
+            assigned_bytes = struct.pack('!I', assigned_number)
+        else:
+            # Type 1 or 2: admin_subfield (4 bytes), assigned_number (2 bytes)
+            admin_bytes = struct.pack('!I', admin_subfield)
+            assigned_bytes = struct.pack('!H', assigned_number)
+
+        # Combine all parts to form the 8-byte Peer RD
+        peer_distinguisher = rd_type_bytes + admin_bytes + assigned_bytes
+        return peer_distinguisher
 
     def build_bmp_per_peer_header(self, peer_ip, peer_asn, timestamp):
         """
@@ -744,11 +793,12 @@ class BMPConverter:
         Returns:
             bytes: The Per-Peer Header in bytes.
         """
-        logger.debug(f"Building BMP Per-Peer Header for {peer_ip} with AS{peer_asn}")
         peer_type = 0  # Global Instance Peer
         peer_flags = 0
         # Peer Distinguisher (8 bytes): set to zero for Global Instance Peer
-        peer_distinguisher = b'\x00' * 8
+        #peer_distinguisher = b'\x00' * 8
+        peer_distinguisher = self.build_peer_distinguisher(peer_type, 0, 0)
+
         # Peer Address (16 bytes): IPv4 mapped into IPv6
         if ':' in peer_ip:
             # IPv6 address
