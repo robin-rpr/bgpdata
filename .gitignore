@@ -3,6 +3,10 @@ Thumbs.db
 ehthumbs.db
 ehthumbs_vista.db
 
+# Configuration files
+config/psql-app-upgraded.*
+config/do_not_init_db
+
 # Folder config file
 Desktop.ini
 

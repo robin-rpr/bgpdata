@@ -179,7 +179,7 @@ services:
         ports:
             - "9005:9005"
         volumes:
-            - obmp_ap_data:/config
+            - ./config:/config
         environment:
             - MEM=3                                           # Set memory to at least 2GB but ideally 4GB
             - KAFKA_FQDN=openbmp-kafka:29092
@@ -226,7 +226,7 @@ services:
             - net.ipv4.tcp_keepalive_probes=5
             - net.ipv4.tcp_keepalive_time=180
         volumes:
-            - obmp_ap_data:/config
+            - ./config:/config
         environment:
             - KAFKA_FQDN=openbmp-kafka:29092
 
@@ -245,7 +245,7 @@ services:
             - net.ipv4.tcp_keepalive_probes=5
             - net.ipv4.tcp_keepalive_time=180
         volumes:
-            - obmp_ap_data:/config
+            - ./config:/config
         depends_on:
             openbmp-db:
                 condition: service_healthy
@@ -330,4 +330,3 @@ volumes:
     obmp_ts_data:
     obmp_zk_data:
     obmp_kf_data:
-    obmp_ap_data:

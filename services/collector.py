@@ -85,9 +85,29 @@ avro_schema = {
 
 class BMPConverter:
     """
-    A class to convert exaBGP JSON messages into BMP (RFC7854) messages.
+    A class to convert data into BMP (RFC7854) messages.
     https://datatracker.ietf.org/doc/html/rfc7854
+
+    # Author: Robin Röper <rroeper@ripe.net>
     """
+    # BMP header lengths (not counting the version in the common hdr)
+    BMP_HDRv3_LEN = 5             # BMP v3 header length, not counting the version
+    BMP_HDRv1v2_LEN = 43
+    BMP_PEER_HDR_LEN = 42         # BMP peer header length
+    BMP_INFO_TLV_HDR_LEN = 4      # BMP info message header length, does not count the info field
+    BMP_MIRROR_TLV_HDR_LEN = 4    # BMP route mirroring TLV header length
+    BMP_TERM_MSG_LEN = 4          # BMP term message header length, does not count the info field
+    BMP_PEER_UP_HDR_LEN = 20      # BMP peer up event header size not including the recv/sent open param message
+    BMP_PACKET_BUF_SIZE = 68000   # Size of the BMP packet buffer (memory)
+
+    # BGP constants
+    BGP_MAX_MSG_SIZE = 65535      # Max payload size - Larger than RFC4271 of 4096
+    BGP_MSG_HDR_LEN = 19          # BGP message header size
+    BGP_OPEN_MSG_MIN_LEN = 29     # Includes the expected header size
+    BGP_VERSION = 4
+    BGP_CAP_PARAM_TYPE = 2
+    BGP_AS_TRANS = 23456          # BGP ASN when AS exceeds 16bits
+
     def __init__(self):
         """
         Initialize the BMPConverter class.
@@ -304,7 +324,7 @@ class BMPConverter:
         bmp_msg_type = 0  # Route Monitoring
         per_peer_header = self.build_bmp_per_peer_header(peer_ip, peer_asn, timestamp)
 
-        total_length = 6 + len(per_peer_header) + len(bgp_update)
+        total_length = self.BMP_HDRv3_LEN + len(per_peer_header) + len(bgp_update)
 
         # According to RFC 7854, the BMP Common Header should be constructed as follows:
         # bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
@@ -334,7 +354,7 @@ class BMPConverter:
         bmp_msg_type = 0  # Route Monitoring
         per_peer_header = self.build_bmp_per_peer_header(peer_ip, peer_asn, timestamp)
 
-        total_length = 6 + len(per_peer_header) + len(bgp_keepalive)
+        total_length = self.BMP_HDRv3_LEN + len(per_peer_header) + len(bgp_keepalive)
 
         # According to RFC 7854, the BMP Common Header should be constructed as follows:
         # bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
@@ -371,7 +391,7 @@ class BMPConverter:
 
         peer_up_msg = local_address + local_port + remote_port + sent_open_message + received_open_message
 
-        total_length = 6 + len(per_peer_header) + len(peer_up_msg)
+        total_length = self.BMP_HDRv3_LEN + len(per_peer_header) + len(peer_up_msg)
 
         # According to RFC 7854, the BMP Common Header should be constructed as follows:
         # bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
@@ -405,8 +425,8 @@ class BMPConverter:
         # Reason: 1-byte code indicating the reason. For simplicity, use 1 (Local system closed the session)
         reason = struct.pack('!B', 1)  # Reason Code 1
 
-        total_length = 6 + len(per_peer_header) + len(reason) + len(bgp_notification)
-        
+        total_length = self.BMP_HDRv3_LEN + len(per_peer_header) + len(reason) + len(bgp_notification)
+
         # According to RFC 7854, the BMP Common Header should be constructed as follows:
         # bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
         # However, due to OpenBMP's specific implementation requirements, we need to construct it differently:
@@ -923,8 +943,12 @@ async def main():
                 # Send each BMP message individually over the persistent TCP connection
                 try:
                     for message in messages:
+                        # Send the message over the persistent TCP connection
                         sock.sendall(message)
+
+                        # Update the bytes sent counter
                         status['bytes_sent_since_last_log'] += len(message)
+
                 except Exception as e:
                     # Handle exceptions
                     logger.error("TCP connection ended unexpectedly or encountered an error. The service will terminate in 10 seconds.", exc_info=True)
