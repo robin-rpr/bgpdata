@@ -851,33 +851,35 @@ async def main():
                 continue
 
             try:
-                value = msg.value()
-
-                # Remove the first 5 bytes
-                value = value[5:]
-                
-                # Deserialize the Avro encoded exaBGP message
-                parsed = fastavro.schemaless_reader(BytesIO(value), avro_schema)
-
-                # Check if the message is significantly behind the current time
-                timestamp = parsed['timestamp'] / 100
-                time_lag = datetime.now() - datetime.fromtimestamp(timestamp)
-
-                # Convert to BMP messages
-                messages = converter.exabgp_to_bmp(parsed['ris_live'])
-
-                # Add messages to the batch
-                messages_batch.extend(messages)
-                messages_size += len(messages)
-
                 # Adjust polling interval based on how far behind the messages are
                 if time_lag > TIME_LAG_THRESHOLD:
                     poll_interval = CATCHUP_POLL_INTERVAL # Faster polling if we're behind
                 else:
                     poll_interval = NORMAL_POLL_INTERVAL # Slow down if we're caught up
 
-                # Send the batch when it reaches the threshold (non-strict)
-                if messages_size >= BATCH_THRESHOLD:
+                # Check if we've reached the batch threshold (non-strict)
+                if messages_size <= BATCH_THRESHOLD:
+                    # We've not reached the batch threshold, process the message.
+                    value = msg.value()
+
+                    # Remove the first 5 bytes
+                    value = value[5:]
+                    
+                    # Deserialize the Avro encoded exaBGP message
+                    parsed = fastavro.schemaless_reader(BytesIO(value), avro_schema)
+
+                    # Check if the message is significantly behind the current time
+                    timestamp = parsed['timestamp'] / 100
+                    time_lag = datetime.now() - datetime.fromtimestamp(timestamp)
+
+                    # Convert to BMP messages
+                    messages = converter.exabgp_to_bmp(parsed['ris_live'])
+
+                    # Add messages to the batch
+                    messages_batch.extend(messages)
+                    messages_size += len(messages)
+                else:
+                    # We've reached the batch threshold, send the batch.
                     # Efficiently create a batch of messages to send in a single go
                     batched = b''.join(messages_batch)
 
@@ -889,6 +891,9 @@ async def main():
                     # Reset the batch
                     messages_batch = []
                     messages_size = 0
+
+                    # Commit the offset after successful processing
+                    consumer.commit()
 
             except Exception as e:
                 logger.error("Failed to process message, retrying in %d seconds...", FAILURE_RETRY_DELAY, exc_info=True)
