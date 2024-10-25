@@ -1,3 +1,20 @@
+"""
+BGPDATA - BGP Data Collection and Analytics Service
+
+This software is part of the BGPDATA project, which is designed to collect, process, and analyze BGP data from various sources.
+It helps researchers and network operators get insights into their network by providing a scalable and reliable way to collect and process BGP data.
+
+Author: Robin Röper
+
+© 2024 BGPDATA. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+1. Redistributions of source code must retain the above copyright notice, this list of conditions, and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions, and the following disclaimer in the documentation and/or other materials provided with the distribution.
+3. Neither the name of BGPDATA nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+"""
 from confluent_kafka import KafkaError, Consumer
 from sqlalchemy.ext.asyncio import create_async_engine
 from datetime import datetime, timedelta
@@ -741,22 +758,32 @@ def on_rebalance(consumer, partitions):
     except Exception as e:
         logger.error(f"Error handling rebalance: {e}", exc_info=True)
 
-async def log_status(timestamp, time_lag, poll_interval):
+async def log_status(status):
     """
-    Periodically logs the most recent timestamp, time lag, and current poll interval.
+    Periodically logs the most recent timestamp, time lag, current poll interval, and consumption rate.
     This coroutine runs concurrently with the main processing loop.
     
     Args:
-        timestamp (datetime): The most recent timestamp of the messages.
-        time_lag (timedelta): The current time lag of the messages.
-        poll_interval (float): The current polling interval in seconds.
+        status (dict): A dictionary containing the following keys:
+            - timestamp (datetime): The most recent timestamp of the messages.
+            - time_lag (timedelta): The current time lag of the messages.
+            - poll_interval (float): The current polling interval in seconds.
+            - bytes_sent_since_last_log (int): The number of bytes sent since the last log.
     """
     while True:
         await asyncio.sleep(5)  # Sleep for 5 seconds before logging
-        
-        logger.info(f"Timestamp: {timestamp}, "
-                    f"Time lag: {time_lag.total_seconds()} seconds, "
-                    f"Poll interval: {poll_interval} seconds")
+
+        # Compute kbps_counter
+        bytes_sent = status['bytes_sent_since_last_log']
+        kbps_counter = (bytes_sent * 8) / 5 / 1000  # Convert bytes to kilobits per second
+
+        logger.info(f"Timestamp: {status['timestamp']}, "
+                    f"Time lag: {status['time_lag'].total_seconds()} seconds, "
+                    f"Poll interval: {status['poll_interval']} seconds, "
+                    f"Consuming at Kbps: {kbps_counter:.2f}")
+
+        # Reset bytes_sent_since_last_log
+        status['bytes_sent_since_last_log'] = 0
 
 async def main():
     """
@@ -820,26 +847,26 @@ async def main():
         on_revoke=lambda c, p: logger.info(f"Revoked partitions: {[part.partition for part in p]}")
     )
 
-    # Initialize settings for batch processing
-    BATCH_THRESHOLD = 15000
+    # Initialize settings
     CATCHUP_POLL_INTERVAL = 1.0               # Fast poll when behind in time
     NORMAL_POLL_INTERVAL = 5.0                # Slow poll when caught up
     TIME_LAG_THRESHOLD = timedelta(minutes=5) # Consider behind if messages are older than 5 minutes
     FAILURE_RETRY_DELAY = 5                   # Delay in seconds before retrying a failed message
 
-    messages_batch = []
-    messages_size = 0
-
-    poll_interval = NORMAL_POLL_INTERVAL      # Initialize with the normal poll interval
-    time_lag = timedelta(0)                   # Initialize time lag
-    timestamp = datetime.now()                # Initialize timestamp
+    # Initialize status dictionary to share variables between main and log_status
+    status = {
+        'timestamp': datetime.now(),           # Initialize timestamp
+        'time_lag': timedelta(0),              # Initialize time lag
+        'poll_interval': NORMAL_POLL_INTERVAL, # Initialize with the normal poll interval
+        'bytes_sent_since_last_log': 0,        # Initialize bytes sent counter
+    }
 
     # Start logging task that is updated within the loop
-    logging_task = asyncio.create_task(log_status(timestamp, time_lag, poll_interval))
+    logging_task = asyncio.create_task(log_status(status))
 
     try:
         while True:
-            msg = consumer.poll(timeout=poll_interval)  # Use dynamically set poll_interval
+            msg = consumer.poll(timeout=status['poll_interval'])  # Use dynamically set poll_interval
             
             if msg is None:
                 continue
@@ -855,58 +882,41 @@ async def main():
 
             try:
                 # Adjust polling interval based on how far behind the messages are
-                if time_lag > TIME_LAG_THRESHOLD:
-                    poll_interval = CATCHUP_POLL_INTERVAL # Faster polling if we're behind
+                if status['time_lag'] > TIME_LAG_THRESHOLD:
+                    status['poll_interval'] = CATCHUP_POLL_INTERVAL # Faster polling if we're behind
                 else:
-                    poll_interval = NORMAL_POLL_INTERVAL # Slow down if we're caught up
+                    status['poll_interval'] = NORMAL_POLL_INTERVAL # Slow down if we're caught up
 
-                # Check if we've reached the batch threshold
-                if messages_size < BATCH_THRESHOLD:
-                    # We've not reached the batch threshold, process the message.
-                    value = msg.value()
+                
+                # We've not reached the batch threshold, process the message.
+                value = msg.value()
 
-                    # Remove the first 5 bytes
-                    value = value[5:]
-                    
-                    # Deserialize the Avro encoded exaBGP message
-                    parsed = fastavro.schemaless_reader(BytesIO(value), avro_schema)
+                # Remove the first 5 bytes
+                value = value[5:]
+                
+                # Deserialize the Avro encoded exaBGP message
+                parsed = fastavro.schemaless_reader(BytesIO(value), avro_schema)
 
-                    # Check if the message is significantly behind the current time
-                    timestamp = parsed['timestamp'] / 100
-                    time_lag = datetime.now() - datetime.fromtimestamp(timestamp)
+                # Check if the message is significantly behind the current time
+                status['timestamp'] = parsed['timestamp'] / 100
+                status['time_lag'] = datetime.now() - datetime.fromtimestamp(status['timestamp'])
 
-                    # Convert to BMP messages
-                    messages = converter.exabgp_to_bmp(parsed['ris_live'])
+                # Convert to BMP messages
+                messages = converter.exabgp_to_bmp(parsed['ris_live'])
+                
+                # Send each BMP message individually over the persistent TCP connection
+                try:
+                    for message in messages:
+                        sock.sendall(message)
+                        status['bytes_sent_since_last_log'] += len(message)
+                except Exception as e:
+                    # Handle exceptions
+                    logger.error("TCP connection ended unexpectedly or encountered an error. The service will terminate in 10 seconds.", exc_info=True)
+                    await asyncio.sleep(10)
+                    sys.exit("Service terminated due to broken TCP connection, exiting.")
 
-                    # Add messages to the batch
-                    messages_batch.extend(messages)
-                    messages_size += len(messages)
-                else:
-                    # We've reached the batch threshold, send the batch.
-                    # Efficiently create a batch of messages to send in a single go
-                    batched = b''.join(messages_batch)
-
-                    # Send the batch of messages over the persistent TCP connection
-                    try:
-                        sock.sendall(batched)
-                    except Exception as e:
-                        # Log the error and inform about the termination
-                        logger.error("TCP connection ended unexpectedly or encountered an error. The service will terminate in 10 seconds.", exc_info=True)
-
-                        # Wait for 10 seconds before terminating
-                        await asyncio.sleep(10)
-
-                        # Exit the service
-                        sys.exit("Service terminated due to broken TCP connection, exiting.")
-
-                    logger.info(f"Sent {messages_size} BMP messages to OpenBMP")
-
-                    # Reset the batch
-                    messages_batch = []
-                    messages_size = 0
-
-                    # Commit the offset after successful processing
-                    consumer.commit()
+                # Commit the offset after successful processing and transmission
+                consumer.commit()
 
             except Exception as e:
                 logger.error("Failed to process message, retrying in %d seconds...", FAILURE_RETRY_DELAY, exc_info=True)

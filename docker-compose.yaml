@@ -244,6 +244,8 @@ services:
             - net.ipv4.tcp_keepalive_intvl=30
             - net.ipv4.tcp_keepalive_probes=5
             - net.ipv4.tcp_keepalive_time=180
+        volumes:
+            - obmp_ap_data:/config
         depends_on:
             openbmp-db:
                 condition: service_healthy
