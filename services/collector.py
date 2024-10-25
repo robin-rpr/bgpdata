@@ -9,6 +9,7 @@ import asyncio
 import struct
 import socket
 import json
+import zlib
 import os
 import re
 
@@ -98,15 +99,27 @@ class BMPMessageFactory:
         bmp_header = struct.pack('!BIB', version, msg_length, msg_type)
 
         # BMP Per-Peer Header (48 bytes)
-        peer_type = 0  # Assume IPv4, non-RR client
+        peer_type = 0  # Global Instance Peer (0): Represents a BGP peer in the global routing context.
+                       # RD Instance Peer (1): Used for BGP peers that are part of a VPN instance, identified by a Route Distinguisher (RD).
+                       # Local Instance Peer (2): Used for peers that are part of a local BGP instance.
         peer_distinguisher = 0  # Not using peer distinguisher
-        peer_ip_bytes = struct.pack('!4s', socket.inet_aton(peer_ip))
+
+        try:
+            # Try to structure as IPv4 using 16 bytes (padding the 12 most significant bytes with zeros)
+            peer_ip_bytes = struct.pack('!16s', socket.inet_pton(socket.AF_INET, peer_ip).rjust(16, b'\x00'))
+            peer_bgp_id = struct.unpack('!I', socket.inet_pton(socket.AF_INET, peer_ip))[0]
+        except OSError:
+            # If it fails, try to structure as IPv6
+            peer_ip_bytes = struct.pack('!16s', socket.inet_pton(socket.AF_INET6, peer_ip))
+            peer_bgp_id = zlib.crc32(socket.inet_pton(socket.AF_INET6, peer_ip)) & 0xffffffff # Use CRC32 hash (4 bytes)
+
         peer_as_bytes = struct.pack('!I', peer_asn)
-        peer_bgp_id = socket.inet_aton(peer_ip)  # Use peer IP as BGP ID
         timestamp_sec, timestamp_usec = divmod(int(timestamp * 1_000_000), 1_000_000)
 
+        logger.info(f"per_peer_header: {peer_type}, {peer_distinguisher}, {peer_ip_bytes}, {peer_as_bytes}, {peer_bgp_id}, {timestamp_sec}, {timestamp_usec}")
+
         per_peer_header = struct.pack(
-            '!BII4sI4sII',
+            '!BI16sI4sII',
             peer_type,  # Peer Type
             peer_distinguisher,  # Peer Distinguisher
             peer_ip_bytes,  # Peer Address
@@ -160,15 +173,25 @@ class BMPMessageFactory:
         bmp_header = struct.pack('!BIB', version, msg_length, msg_type)
 
         # BMP Per-Peer Header (48 bytes)
-        peer_type = 0  # Assume IPv4, non-RR client
+        peer_type = 0  # Global Instance Peer (0): Represents a BGP peer in the global routing context.
+                       # RD Instance Peer (1): Used for BGP peers that are part of a VPN instance, identified by a Route Distinguisher (RD).
+                       # Local Instance Peer (2): Used for peers that are part of a local BGP instance.
         peer_distinguisher = 0  # Not using peer distinguisher
-        peer_ip_bytes = struct.pack('!4s', socket.inet_aton(peer_ip))
+        
+        try:
+            # Try to structure as IPv4 using 16 bytes (padding the 12 most significant bytes with zeros)
+            peer_ip_bytes = struct.pack('!16s', socket.inet_pton(socket.AF_INET, peer_ip).rjust(16, b'\x00'))
+            peer_bgp_id = struct.unpack('!I', socket.inet_pton(socket.AF_INET, peer_ip))[0]
+        except OSError:
+            # If it fails, try to structure as IPv6
+            peer_ip_bytes = struct.pack('!16s', socket.inet_pton(socket.AF_INET6, peer_ip))
+            peer_bgp_id = zlib.crc32(socket.inet_pton(socket.AF_INET6, peer_ip)) & 0xffffffff # Use CRC32 hash (4 bytes)
+
         peer_as_bytes = struct.pack('!I', peer_asn)
-        peer_bgp_id = socket.inet_aton(peer_ip)  # Use peer IP as BGP ID
         timestamp_sec, timestamp_usec = divmod(int(timestamp * 1_000_000), 1_000_000)
 
         per_peer_header = struct.pack(
-            '!BII4sI4sII',
+            '!BI16sI4sII',
             peer_type,  # Peer Type
             peer_distinguisher,  # Peer Distinguisher
             peer_ip_bytes,  # Peer Address
@@ -207,15 +230,25 @@ class BMPMessageFactory:
         bmp_header = struct.pack('!BIB', version, msg_length, msg_type)
 
         # BMP Per-Peer Header (48 bytes)
-        peer_type = 0  # Assume IPv4, non-RR client
+        peer_type = 0  # Global Instance Peer (0): Represents a BGP peer in the global routing context.
+                       # RD Instance Peer (1): Used for BGP peers that are part of a VPN instance, identified by a Route Distinguisher (RD).
+                       # Local Instance Peer (2): Used for peers that are part of a local BGP instance.
         peer_distinguisher = 0  # Not using peer distinguisher
-        peer_ip_bytes = struct.pack('!4s', socket.inet_aton(peer_ip))
+
+        try:
+            # Try to structure as IPv4 using 16 bytes (padding the 12 most significant bytes with zeros)
+            peer_ip_bytes = struct.pack('!16s', socket.inet_pton(socket.AF_INET, peer_ip).rjust(16, b'\x00'))
+            peer_bgp_id = struct.unpack('!I', socket.inet_pton(socket.AF_INET, peer_ip))[0]
+        except OSError:
+            # If it fails, try to structure as IPv6
+            peer_ip_bytes = struct.pack('!16s', socket.inet_pton(socket.AF_INET6, peer_ip))
+            peer_bgp_id = zlib.crc32(socket.inet_pton(socket.AF_INET6, peer_ip)) & 0xffffffff # Use CRC32 hash (4 bytes)
+
         peer_as_bytes = struct.pack('!I', peer_asn)
-        peer_bgp_id = socket.inet_aton(peer_ip)  # Use peer IP as BGP ID
         timestamp_sec, timestamp_usec = divmod(int(timestamp * 1_000_000), 1_000_000)
 
         per_peer_header = struct.pack(
-            '!BII4sI4sII',
+            '!BI16sI4sII',
             peer_type,  # Peer Type
             peer_distinguisher,  # Peer Distinguisher
             peer_ip_bytes,  # Peer Address
@@ -403,11 +436,11 @@ async def main():
                 parsed = fastavro.schemaless_reader(BytesIO(value), avro_schema)
 
                 # Check if the message is significantly behind the current time
-                timestamp = parsed['timestamp']
+                timestamp = parsed['timestamp'] / 100
                 time_lag = datetime.now() - datetime.fromtimestamp(timestamp)
 
                 # Convert to BMP messages
-                messages = BMPMessageFactory.exabgp_to_bmp(parsed)
+                messages = BMPMessageFactory.exabgp_to_bmp(parsed['ris_live'])
 
                 # Adjust polling interval based on how far behind the messages are
                 if time_lag > TIME_LAG_THRESHOLD:
