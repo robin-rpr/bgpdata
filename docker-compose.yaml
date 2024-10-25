@@ -104,8 +104,8 @@ services:
         ports:
             - "3000:3000"
         volumes:
-            - core_gf_data:/var/lib/grafana
-            - core_gp_data:/etc/grafana/provisioning/
+            - ./grafana:/var/lib/grafana
+            - ./grafana:/etc/grafana/provisioning/
         environment:
             - GF_SECURITY_ADMIN_PASSWORD=openbmp
             - GF_AUTH_ANONYMOUS_ENABLED=true
@@ -289,8 +289,6 @@ services:
 # Define volumes
 volumes:
     core_pg_data:
-    core_gf_data:
-    core_gp_data:
     obmp_pg_data:
     obmp_ts_data:
     obmp_zk_data:
