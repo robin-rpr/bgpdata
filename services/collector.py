@@ -326,11 +326,9 @@ class BMPConverter:
 
         total_length = self.BMP_HDRv3_LEN + len(per_peer_header) + len(bgp_update)
 
-        # According to RFC 7854, the BMP Common Header should be constructed as follows:
-        # bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
-        # However, due to OpenBMP's specific implementation requirements, we need to construct it differently:
-        bmp_common_header = struct.pack('!BBI', 3, bmp_msg_type, total_length)
+        bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
 
+        # Build the full BMP message
         bmp_message = bmp_common_header + per_peer_header + bgp_update
 
         return bmp_message
@@ -356,11 +354,9 @@ class BMPConverter:
 
         total_length = self.BMP_HDRv3_LEN + len(per_peer_header) + len(bgp_keepalive)
 
-        # According to RFC 7854, the BMP Common Header should be constructed as follows:
-        # bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
-        # However, due to OpenBMP's specific implementation requirements, we need to construct it differently:
-        bmp_common_header = struct.pack('!BBI', 3, bmp_msg_type, total_length)
+        bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
 
+        # Build the full BMP message
         bmp_message = bmp_common_header + per_peer_header + bgp_keepalive
 
         return bmp_message
@@ -393,11 +389,9 @@ class BMPConverter:
 
         total_length = self.BMP_HDRv3_LEN + len(per_peer_header) + len(peer_up_msg)
 
-        # According to RFC 7854, the BMP Common Header should be constructed as follows:
-        # bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
-        # However, due to OpenBMP's specific implementation requirements, we need to construct it differently:
-        bmp_common_header = struct.pack('!BBI', 3, bmp_msg_type, total_length)
+        bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
 
+        # Build the full BMP message
         bmp_message = bmp_common_header + per_peer_header + peer_up_msg
 
         return bmp_message
@@ -427,11 +421,9 @@ class BMPConverter:
 
         total_length = self.BMP_HDRv3_LEN + len(per_peer_header) + len(reason) + len(bgp_notification)
 
-        # According to RFC 7854, the BMP Common Header should be constructed as follows:
-        # bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
-        # However, due to OpenBMP's specific implementation requirements, we need to construct it differently:
-        bmp_common_header = struct.pack('!BBI', 3, bmp_msg_type, total_length)
+        bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
 
+        # Build the full BMP message
         bmp_message = bmp_common_header + per_peer_header + reason + bgp_notification
 
         return bmp_message
@@ -454,15 +446,20 @@ class BMPConverter:
         nlri = b''
 
         # Process 'withdraw'
-        if 'withdraw' in update_message:
-            # Withdrawn Routes
-            withdraw = update_message['withdraw']
-            for afi_safi in withdraw:
-                prefixes = withdraw[afi_safi]
-                for prefix in prefixes:
-                    prefix_bytes = self.encode_prefix(prefix)
-                    withdrawn_routes += prefix_bytes
+        #if 'withdrawn_routes' in update_message:
+        #    # Withdrawn Routes
+        #    withdraw = update_message['withdrawn_routes']
+        #    for afi_safi in withdraw:
+        #        prefixes = withdraw[afi_safi]
+        #        for prefix in prefixes:
+        #            prefix_bytes = self.encode_prefix(prefix)
+        #            withdrawn_routes += prefix_bytes
+#
+        #    withdrawn_routes_length = len(withdrawn_routes)
 
+        # Process 'withdrawn_routes'
+        if 'withdrawn_routes' in update_message:
+            withdrawn_routes = update_message['withdrawn_routes']
             withdrawn_routes_length = len(withdrawn_routes)
 
         # Process 'attribute'
@@ -484,6 +481,10 @@ class BMPConverter:
                         nlri += b'' # Empty for IPv6
                     else:
                         nlri += prefix_bytes
+
+        # Process the Network Layer Reachability Information or NLRI
+        if 'nlri' in update_message:
+            nlri = update_message['nlri']
 
         # Build the UPDATE message
         # Withdrawn Routes Length (2 bytes)
@@ -743,6 +744,7 @@ class BMPConverter:
         Returns:
             bytes: The Per-Peer Header in bytes.
         """
+        logger.debug(f"Building BMP Per-Peer Header for {peer_ip} with AS{peer_asn}")
         peer_type = 0  # Global Instance Peer
         peer_flags = 0
         # Peer Distinguisher (8 bytes): set to zero for Global Instance Peer
@@ -755,19 +757,21 @@ class BMPConverter:
             # IPv4 address
             peer_address = b'\x00' * 12 + socket.inet_pton(socket.AF_INET, peer_ip)
 
-        peer_as = int(peer_asn)
         # For Peer BGP ID, we'll use zeros (could be improved)
         peer_bgp_id = b'\x00' * 4
+
+        # Convert peer_asn to 4-byte big-endian byte array
+        peer_as_bytes = struct.pack('!I', peer_asn)
 
         ts_seconds = int(timestamp)
         ts_microseconds = int((timestamp - ts_seconds) * 1e6)
 
-        per_peer_header = struct.pack('!BB8s16sI4sII',
+        per_peer_header = struct.pack('!BB8s16s4s4sII',
                                       peer_type,
                                       peer_flags,
                                       peer_distinguisher,
                                       peer_address,
-                                      peer_as,
+                                      peer_as_bytes,
                                       peer_bgp_id,
                                       ts_seconds,
                                       ts_microseconds)

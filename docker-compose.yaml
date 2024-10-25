@@ -278,7 +278,7 @@ services:
             test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "openbmp-kafka:29092"]
             interval: 30s
             timeout: 10s
-            retries: 5
+            retries: 10
         # Change the mount point to where you want to store Kafka data.
         #   Normally 80GB or more
         volumes:
