@@ -146,27 +146,56 @@ class BMPConverter:
             announcements = data.get('announcements', [])
             withdrawals = data.get('withdrawals', [])
 
-            attributes = {
+            # Common attributes
+            common_attributes = {
                 'origin': origin,
                 'as-path': path,
                 'community': community
             }
 
+            if 'med' in data:
+                common_attributes['med'] = data['med']
+
             # Process Announcements
-            if announcements:
-                update_message = {
-                    'attribute': attributes,
-                    'announce': {}
-                }
-                for announcement in announcements:
-                    next_hop = announcement['next_hop']
-                    prefixes = announcement['prefixes']
-                    attributes['next-hop'] = next_hop
-                    afi_safi = 'ipv4 unicast' if ':' not in prefixes[0] else 'ipv6 unicast'
-                    update_message['announce'][afi_safi] = {}
+            for announcement in announcements:
+                next_hop = announcement['next_hop']
+                prefixes = announcement['prefixes']
+                # Split next_hop into a list of addresses
+                next_hop_addresses = [nh.strip() for nh in next_hop.split(',')]
+                afi = 1  # IPv4
+                if ':' in prefixes[0]:
+                    afi = 2  # IPv6
+                safi = 1  # Unicast
+
+                # Build attributes for this announcement
+                attributes = common_attributes.copy()
+                attributes.update({
+                    'next-hop': next_hop_addresses,
+                    'afi': afi,
+                    'safi': safi,
+                })
+
+                # For IPv6, include NLRI in attributes
+                if afi == 2:
+                    # Build NLRI
+                    nlri = b''
                     for prefix in prefixes:
-                        update_message['announce'][afi_safi][prefix] = {}
-                # Build the BGP UPDATE message
+                        nlri += self.encode_prefix(prefix)
+                    attributes['nlri'] = nlri
+                    update_message = {
+                        'attribute': attributes,
+                    }
+                else:
+                    # For IPv4, include NLRI in the update_message
+                    nlri = b''
+                    for prefix in prefixes:
+                        nlri += self.encode_prefix(prefix)
+                    update_message = {
+                        'attribute': attributes,
+                        'nlri': nlri,
+                    }
+
+                # Build BMP message
                 bmp_message = self.construct_bmp_route_monitoring_message(
                     peer_ip=peer_ip,
                     peer_asn=peer_asn,
@@ -177,13 +206,38 @@ class BMPConverter:
 
             # Process Withdrawals
             if withdrawals:
-                update_message = {
-                    'attribute': attributes,
-                    'withdraw': {}
-                }
-                afi_safi = 'ipv4 unicast' if ':' not in withdrawals[0] else 'ipv6 unicast'
-                update_message['withdraw'][afi_safi] = withdrawals
-                # Build the BGP UPDATE message with withdrawals
+                afi = 1  # IPv4
+                if ':' in withdrawals[0]:
+                    afi = 2  # IPv6
+                safi = 1  # Unicast
+
+                # Build attributes for withdrawals
+                attributes = common_attributes.copy()
+                attributes.update({
+                    'afi': afi,
+                    'safi': safi,
+                })
+
+                if afi == 2:
+                    # For IPv6, withdrawals are included in MP_UNREACH_NLRI
+                    nlri = b''
+                    for prefix in withdrawals:
+                        nlri += self.encode_prefix(prefix)
+                    attributes['withdrawn_nlri'] = nlri
+                    update_message = {
+                        'attribute': attributes,
+                    }
+                else:
+                    # For IPv4, withdrawals are in the BGP UPDATE message body
+                    withdrawn_routes = b''
+                    for prefix in withdrawals:
+                        withdrawn_routes += self.encode_prefix(prefix)
+                    update_message = {
+                        'attribute': attributes,
+                        'withdrawn_routes': withdrawn_routes,
+                    }
+
+                # Build BMP message
                 bmp_message = self.construct_bmp_route_monitoring_message(
                     peer_ip=peer_ip,
                     peer_asn=peer_asn,
@@ -384,7 +438,10 @@ class BMPConverter:
                 prefixes_dict = announce[afi_safi]
                 for prefix in prefixes_dict:
                     prefix_bytes = self.encode_prefix(prefix)
-                    nlri += prefix_bytes
+                    if ':' in prefix:
+                        nlri += b'' # Empty for IPv6
+                    else:
+                        nlri += prefix_bytes
 
         # Build the UPDATE message
         # Withdrawn Routes Length (2 bytes)
@@ -461,52 +518,100 @@ class BMPConverter:
         # AS_PATH
         if 'as-path' in attributes:
             as_path = attributes['as-path']
-            # AS_PATH is a sequence of AS_PATH segments
-            # For simplicity, assume only AS_SEQUENCE
             attr_flags = 0x40  # Transitive
             attr_type = 2
-            as_numbers = as_path  # list of AS numbers
-            segment_type = 2  # AS_SEQUENCE
-            segment_length = len(as_numbers)
-            segment_value = b''
-            for asn in as_numbers:
-                segment_value += struct.pack('!I', int(asn))
-            attr_value = struct.pack('!BB', segment_type, segment_length) + segment_value
-            attr_length = len(attr_value)
+            as_path_value = b''
+
+            # Process each segment in the AS_PATH
+            segments = []
+            current_segment = []
+            for element in as_path:
+                if isinstance(element, list):
+                    # AS_SET
+                    if current_segment:
+                        # Flush previous AS_SEQUENCE segment
+                        segments.append((2, current_segment))
+                        current_segment = []
+                    segments.append((1, element))  # AS_SET
+                else:
+                    # AS_SEQUENCE
+                    current_segment.append(element)
+
+            if current_segment:
+                segments.append((2, current_segment))  # AS_SEQUENCE
+
+            # Build the AS_PATH attribute
+            for segment_type, as_numbers in segments:
+                segment_length = len(as_numbers)
+                segment_value = b''
+                for asn in as_numbers:
+                    segment_value += struct.pack('!I', int(asn))
+                as_path_value += struct.pack('!BB', segment_type, segment_length) + segment_value
+
+            attr_length = len(as_path_value)
             if attr_length > 255:
                 # Extended Length
                 attr_flags |= 0x10  # Set Extended Length flag
                 path_attributes += struct.pack('!BBH', attr_flags, attr_type, attr_length)
             else:
                 path_attributes += struct.pack('!BBB', attr_flags, attr_type, attr_length)
-            path_attributes += attr_value
+            path_attributes += as_path_value
 
-        # NEXT_HOP
+        # NEXT_HOP and MP_REACH_NLRI
         if 'next-hop' in attributes:
             next_hop = attributes['next-hop']
-            if ':' in next_hop:
-                logger.info(f"IPv6 NEXT_HOP: {next_hop}")
-                next_hop_bytes = socket.inet_pton(socket.AF_INET6, next_hop)
+            afi = attributes.get('afi', 1)  # Default to IPv4
+            safi = attributes.get('safi', 1)  # Default to unicast
+            if afi == 2:
+                # IPv6
+                # Handle MP_REACH_NLRI
+                next_hop_bytes = b''
+                for nh in next_hop:
+                    # Determine if next hop is IPv4 or IPv6
+                    if ':' in nh:
+                        # Next hop is IPv6
+                        next_hop_bytes += socket.inet_pton(socket.AF_INET6, nh)
+                    else:
+                        # Next hop is IPv4, encode per RFC 5549
+                        next_hop_bytes += socket.inet_pton(socket.AF_INET, nh)
+
                 attr_flags = 0x80  # Optional
                 attr_type = 14  # MP_REACH_NLRI
-                afi = 2  # IPv6
-                safi = 1  # Unicast
-                # Build MP_REACH_NLRI attribute
-                mp_reach_value = struct.pack('!HBB', afi, safi, len(next_hop_bytes)) + next_hop_bytes + b'\x00'
-                attr_length = len(mp_reach_value)
+                nlri = attributes.get('nlri', b'')
+                nh_length = len(next_hop_bytes)
+                mp_reach_nlri = struct.pack('!HBB', afi, safi, nh_length) + next_hop_bytes + b'\x00' + nlri
+                attr_length = len(mp_reach_nlri)
                 if attr_length > 255:
                     attr_flags |= 0x10  # Extended Length
                     path_attributes += struct.pack('!BBH', attr_flags, attr_type, attr_length)
                 else:
                     path_attributes += struct.pack('!BBB', attr_flags, attr_type, attr_length)
-                path_attributes += mp_reach_value
+                path_attributes += mp_reach_nlri
             else:
-                next_hop_bytes = socket.inet_aton(next_hop)
+                # IPv4
+                # NEXT_HOP attribute
+                next_hop_bytes = socket.inet_pton(socket.AF_INET, next_hop[0])
                 attr_flags = 0x40  # Transitive
                 attr_type = 3
                 attr_length = 4  # IPv4 address
                 attr_value = next_hop_bytes
                 path_attributes += struct.pack('!BBB', attr_flags, attr_type, attr_length) + attr_value
+
+        # Handle MP_UNREACH_NLRI for IPv6 withdrawals
+        if 'withdrawn_nlri' in attributes:
+            afi = attributes.get('afi', 2)
+            safi = attributes.get('safi', 1)
+            withdrawn_nlri = attributes['withdrawn_nlri']
+            attr_flags = 0x80  # Optional
+            attr_type = 15  # MP_UNREACH_NLRI
+            mp_unreach_nlri = struct.pack('!HB', afi, safi) + withdrawn_nlri
+            attr_length = len(mp_unreach_nlri)
+            if attr_length > 255:
+                attr_flags |= 0x10  # Extended Length
+                path_attributes += struct.pack('!BBH', attr_flags, attr_type, attr_length)
+            else:
+                path_attributes += struct.pack('!BBB', attr_flags, attr_type, attr_length)
+            path_attributes += mp_unreach_nlri
 
         # COMMUNITY
         if 'community' in attributes:
@@ -526,7 +631,16 @@ class BMPConverter:
                     path_attributes += struct.pack('!BBB', attr_flags, attr_type, attr_length)
                 path_attributes += community_value
 
-        # Additional attributes can be added similarly
+        # MED
+        if 'med' in attributes:
+            med = int(attributes['med'])
+            attr_flags = 0x80  # Optional
+            attr_type = 4
+            attr_length = 4
+            attr_value = struct.pack('!I', med)
+            path_attributes += struct.pack('!BBB', attr_flags, attr_type, attr_length) + attr_value
+
+        # TODO:Additional attributes can be added similarly
 
         return path_attributes
 
@@ -750,7 +864,7 @@ async def main():
                 if messages_size >= BATCH_THRESHOLD:
                     # Send messages to Kafka
                     for message in messages_batch:
-                        producer.send('openbmp.bmp_raw', message)
+                        producer.produce('openbmp.bmp_raw', message)
                     
                     logger.info(f"Ingested {len(messages_batch)} messages.")
 
