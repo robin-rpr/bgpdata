@@ -136,7 +136,7 @@ class BMPConverter:
         # Extract relevant fields from exaBGP message
         peer_ip = data['peer']
         peer_asn = int(data['peer_asn'])
-        timestamp = data['timestamp']
+        timestamp = data['timestamp'] / 1000 # Cast from int to datetime float
         msg_type = data['type'].upper()
 
         bmp_messages = []
@@ -305,7 +305,11 @@ class BMPConverter:
         per_peer_header = self.build_bmp_per_peer_header(peer_ip, peer_asn, timestamp)
 
         total_length = 6 + len(per_peer_header) + len(bgp_update)
-        bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
+
+        # According to RFC 7854, the BMP Common Header should be constructed as follows:
+        # bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
+        # However, due to OpenBMP's specific implementation requirements, we need to construct it differently:
+        bmp_common_header = struct.pack('!BBI', 3, bmp_msg_type, total_length)
 
         bmp_message = bmp_common_header + per_peer_header + bgp_update
 
@@ -331,7 +335,11 @@ class BMPConverter:
         per_peer_header = self.build_bmp_per_peer_header(peer_ip, peer_asn, timestamp)
 
         total_length = 6 + len(per_peer_header) + len(bgp_keepalive)
-        bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
+
+        # According to RFC 7854, the BMP Common Header should be constructed as follows:
+        # bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
+        # However, due to OpenBMP's specific implementation requirements, we need to construct it differently:
+        bmp_common_header = struct.pack('!BBI', 3, bmp_msg_type, total_length)
 
         bmp_message = bmp_common_header + per_peer_header + bgp_keepalive
 
@@ -364,7 +372,11 @@ class BMPConverter:
         peer_up_msg = local_address + local_port + remote_port + sent_open_message + received_open_message
 
         total_length = 6 + len(per_peer_header) + len(peer_up_msg)
-        bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
+
+        # According to RFC 7854, the BMP Common Header should be constructed as follows:
+        # bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
+        # However, due to OpenBMP's specific implementation requirements, we need to construct it differently:
+        bmp_common_header = struct.pack('!BBI', 3, bmp_msg_type, total_length)
 
         bmp_message = bmp_common_header + per_peer_header + peer_up_msg
 
@@ -394,7 +406,11 @@ class BMPConverter:
         reason = struct.pack('!B', 1)  # Reason Code 1
 
         total_length = 6 + len(per_peer_header) + len(reason) + len(bgp_notification)
-        bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
+        
+        # According to RFC 7854, the BMP Common Header should be constructed as follows:
+        # bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
+        # However, due to OpenBMP's specific implementation requirements, we need to construct it differently:
+        bmp_common_header = struct.pack('!BBI', 3, bmp_msg_type, total_length)
 
         bmp_message = bmp_common_header + per_peer_header + reason + bgp_notification
 
@@ -777,10 +793,10 @@ async def log_status(status):
         bytes_sent = status['bytes_sent_since_last_log']
         kbps_counter = (bytes_sent * 8) / 5 / 1000  # Convert bytes to kilobits per second
 
-        logger.info(f"Timestamp: {status['timestamp']}, "
+        logger.info(f"At time: {status['timestamp']}, "
                     f"Time lag: {status['time_lag'].total_seconds()} seconds, "
                     f"Poll interval: {status['poll_interval']} seconds, "
-                    f"Consuming at Kbps: {kbps_counter:.2f}")
+                    f"Transmitting at ~{kbps_counter:.2f} kbit/s")
 
         # Reset bytes_sent_since_last_log
         status['bytes_sent_since_last_log'] = 0
@@ -830,8 +846,8 @@ async def main():
                 logger.error(f"Unable to connect to OpenBMP collector within {timeout} seconds")
                 raise Exception(f"Unable to connect to OpenBMP collector within {timeout} seconds") from e
             else:
-                logger.warning(f"Connection failed, retrying in 1 seconds... ({elapsed_time:.1f}s elapsed)")
-                await asyncio.sleep(1)  # Wait before retrying
+                logger.warning(f"Connection failed, retrying in 10 seconds... ({elapsed_time:.1f}s elapsed)")
+                await asyncio.sleep(10)  # Wait before retrying
         except Exception as e:
             # Handle other exceptions
             logger.error("An unexpected error occurred while trying to connect to OpenBMP collector", exc_info=True)
@@ -898,8 +914,8 @@ async def main():
                 parsed = fastavro.schemaless_reader(BytesIO(value), avro_schema)
 
                 # Check if the message is significantly behind the current time
-                status['timestamp'] = parsed['timestamp'] / 100
-                status['time_lag'] = datetime.now() - datetime.fromtimestamp(status['timestamp'])
+                status['timestamp'] = datetime.fromtimestamp(parsed['timestamp'] / 1000)
+                status['time_lag'] = datetime.now() - status['timestamp']
 
                 # Convert to BMP messages
                 messages = converter.exabgp_to_bmp(parsed['ris_live'])
