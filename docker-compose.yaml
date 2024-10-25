@@ -16,9 +16,6 @@ services:
     #
     # The 'core-aggregator' service periodically analyzes the collected data to identify
     # and categorize RIS peers, storing this information in Redis for quick access.
-    #
-    # The 'core-grafana' service provides a Grafana dashboard for visualizing the data
-    # collected and processed by the application, offering insights and monitoring capabilities.
     ####
     core-db:
         image: timescale/timescaledb:latest-pg13
@@ -95,25 +92,6 @@ services:
     #    entrypoint: >
     #        python services/ris_peers.py
 
-    core-grafana:
-        container_name: core-grafana
-        image: grafana/grafana:9.1.7
-        healthcheck:
-            test: ["CMD", "curl", "-f", "http://localhost:3000"]
-            interval: 30s
-            timeout: 10s
-            retries: 3
-        ports:
-            - "3000:3000"
-        volumes:
-            - ./grafana:/var/lib/grafana
-            - ./grafana/provisioning/:/etc/grafana/provisioning/
-        environment:
-            - GF_SECURITY_ADMIN_PASSWORD=openbmp
-            - GF_AUTH_ANONYMOUS_ENABLED=true
-            - GF_USERS_HOME_PAGE=d/obmp-home/obmp-home
-            - GF_INSTALL_PLUGINS=agenty-flowcharting-panel,grafana-piechart-panel,grafana-worldmap-panel,grafana-simple-json-datasource,vonage-status-panel
-
     ###
     # OpenBMP (Open Border Gateway Protocol Monitoring Protocol) services
     #
@@ -140,6 +118,12 @@ services:
     # The 'openbmp-app' service provides a web interface and API for accessing the stored
     # BGP data. It allows users to query the database, visualize BGP data, and generate
     # reports on routing behavior and anomalies.
+    #
+    # The 'openbmp-collector' service ingests BMP messages from the 'core-collector' service.
+    # Which is collecting from the RIPE NCC's RIS Live Kafka stream.
+    #
+    # The 'openbmp-grafana' service provides a Grafana dashboard for visualizing the data
+    # collected and processed by the application, offering insights and monitoring capabilities.
     ###
     openbmp-db:
         container_name: openbmp-db
@@ -310,6 +294,24 @@ services:
             KAFKA_MESSAGE_MAX_BYTES: 100000000
             KAFKA_LOG_CLEANER_THREADS: 2
 
+    openbmp-grafana:
+        container_name: openbmp-grafana
+        image: grafana/grafana:9.1.7
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:3000"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+        ports:
+            - "3000:3000"
+        volumes:
+            - ./grafana:/var/lib/grafana
+            - ./grafana/provisioning/:/etc/grafana/provisioning/
+        environment:
+            - GF_SECURITY_ADMIN_PASSWORD=openbmp
+            - GF_AUTH_ANONYMOUS_ENABLED=true
+            - GF_USERS_HOME_PAGE=d/obmp-home/obmp-home
+            - GF_INSTALL_PLUGINS=agenty-flowcharting-panel,grafana-piechart-panel,grafana-worldmap-panel,grafana-simple-json-datasource,vonage-status-panel
 
 # Define volumes
 volumes:

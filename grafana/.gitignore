@@ -1,6 +1,14 @@
+# Grafana
+alerting/
+csv/
+plugins/
+png/
+
+# Operating System Files
 .DS_Store
 .idea
 *.log
 *.pyc
 *.tgz
 *.gz
+*.db

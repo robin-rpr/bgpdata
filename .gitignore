@@ -6,13 +6,6 @@ ehthumbs_vista.db
 # Folder config file
 Desktop.ini
 
-# Grafana
-grafana/alerting
-grafana/csv
-grafana/plugins
-grafana/png
-grafana/*.db
-
 # Recycle Bin used on file shares
 $RECYCLE.BIN/
 
