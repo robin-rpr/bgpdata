@@ -69,8 +69,10 @@ services:
             - POSTGRESQL_DATABASE=postgresql+asyncpg://core:core@core-db:5432/default
             - SASL_KAFKA_USERNAME=public
             - SASL_KAFKA_PASSWORD=public
+            - OPENBMP_COLLECTOR_HOST=openbmp-collector
+            - OPENBMP_COLLECTOR_PORT=5000
         depends_on:
-            openbmp-kafka:
+            openbmp-collector:
                 condition: service_healthy
         working_dir: /app
         volumes:
@@ -105,7 +107,7 @@ services:
             - "3000:3000"
         volumes:
             - ./grafana:/var/lib/grafana
-            - ./grafana:/etc/grafana/provisioning/
+            - ./grafana/provisioning/:/etc/grafana/provisioning/
         environment:
             - GF_SECURITY_ADMIN_PASSWORD=openbmp
             - GF_AUTH_ANONYMOUS_ENABLED=true
@@ -150,6 +152,8 @@ services:
             retries: 5
         privileged: true
         shm_size: 1536m
+        ports:
+            - "5433:5432"
         sysctls:
             - net.ipv4.tcp_keepalive_intvl=30
             - net.ipv4.tcp_keepalive_probes=5
@@ -217,6 +221,25 @@ services:
             - POSTGRES_DROP_stats_peer_rib='4 weeks'
             - POSTGRES_DROP_stats_peer_update_counts='4 weeks'
 
+    openbmp-collector:
+        restart: unless-stopped
+        container_name: openbmp-collector
+        platform: linux/amd64
+        healthcheck:
+            test: ["CMD-SHELL", "cat", "< /dev/null >", "/dev/tcp/localhost/5000"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+        image: openbmp/collector:2.2.3
+        sysctls:
+            - net.ipv4.tcp_keepalive_intvl=30
+            - net.ipv4.tcp_keepalive_probes=5
+            - net.ipv4.tcp_keepalive_time=180
+        volumes:
+            - obmp_ap_data:/config
+        environment:
+            - KAFKA_FQDN=openbmp-kafka:29092
+
     openbmp-whois:
         container_name: openbmp-whois
         image: openbmp/whois:2.2.0
@@ -246,6 +269,7 @@ services:
         container_name: openbmp-zookeeper
         image: confluentinc/cp-zookeeper:7.1.1
         platform: linux/amd64
+        restart: unless-stopped
         volumes:
             - obmp_zk_data:/var/lib/zookeeper
         environment:
@@ -256,6 +280,7 @@ services:
         container_name: openbmp-kafka
         image: confluentinc/cp-kafka:7.1.1
         platform: linux/amd64
+        restart: unless-stopped
         healthcheck:
             test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "openbmp-kafka:29092"]
             interval: 30s

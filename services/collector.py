@@ -1,4 +1,4 @@
-from confluent_kafka import KafkaError, Consumer, Producer
+from confluent_kafka import KafkaError, Consumer
 from sqlalchemy.ext.asyncio import create_async_engine
 from datetime import datetime, timedelta
 from typing import List
@@ -32,16 +32,6 @@ consumer_conf = {
     'sasl.password': os.getenv("SASL_KAFKA_PASSWORD"),
 }
 
-# Kafka Producer configuration
-producer_config = {
-    'bootstrap.servers': 'openbmp-kafka:29092', # OpenBMP Kafka broker
-    'client.id': 'bmp-message-producer',        # Custom client ID for the producer
-    'linger.ms': 5,                             # Slight delay to batch messages
-    'acks': 'all',                              # Wait for all brokers to acknowledge the message
-    'retries': 5                                # Retry sending up to 5 times on failure
-}
-producer = Producer(producer_config)
-
 avro_schema = {
     "type": "record",
     "name": "RisLiveBinary",
@@ -73,11 +63,6 @@ avro_schema = {
         { "name": "raw", "type": "string" },
     ],
 }
-
-import json
-import struct
-import socket
-from typing import List
 
 class BMPConverter:
     """
@@ -791,6 +776,11 @@ async def main():
     consumer = Consumer(consumer_conf)
     consumer.subscribe(['ris-live'])
 
+    # Create OpenBMP Socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # Disable Nagle's algorithm for low-latency sending
+    sock.connect((os.getenv('OPENBMP_COLLECTOR_HOST'), int(os.getenv('OPENBMP_COLLECTOR_PORT'))))  # Persistent connection to OpenBMP Collector
+
     # Initialize the converter
     converter = BMPConverter()
 
@@ -850,26 +840,25 @@ async def main():
                 # Convert to BMP messages
                 messages = converter.exabgp_to_bmp(parsed['ris_live'])
 
+                # Add messages to the batch
+                messages_batch.extend(messages)
+                messages_size += len(messages)
+
                 # Adjust polling interval based on how far behind the messages are
                 if time_lag > TIME_LAG_THRESHOLD:
                     poll_interval = CATCHUP_POLL_INTERVAL # Faster polling if we're behind
                 else:
                     poll_interval = NORMAL_POLL_INTERVAL # Slow down if we're caught up
 
-                # Add messages to the batch
-                messages_batch.extend(messages)
-                messages_size += len(messages)
-
-                # Process the batch when it reaches the threshold (non-strict)
+                # Send the batch when it reaches the threshold (non-strict)
                 if messages_size >= BATCH_THRESHOLD:
-                    # Send messages to Kafka
-                    for message in messages_batch:
-                        producer.produce('openbmp.bmp_raw', message)
-                    
-                    logger.info(f"Ingested {len(messages_batch)} messages.")
+                    # Efficiently create a batch of messages to send in a single go
+                    batched = b''.join(messages_batch)
 
-                    # Commit the offset after successful processing
-                    producer.flush()
+                    # Send the batch of messages over the persistent TCP connection
+                    sock.sendall(batched)
+
+                    print(f"Sent {messages_size} BMP messages to OpenBMP")
 
                     # Reset the batch
                     messages_batch = []
