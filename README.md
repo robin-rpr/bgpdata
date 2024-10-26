@@ -1,4 +1,9 @@
-# BGPDATA
+<img title="BGPDATA" src="static/images/logo.svg" height="64" align="left" />
+
+<br />
+<br />
+
+---
 
 BGP Data Collection and Analytics Service
 
