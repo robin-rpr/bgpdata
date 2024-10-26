@@ -15,7 +15,6 @@ Redistribution and use in source and binary forms, with or without modification,
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***/
-
 import ControlsView from "./views/controls.js";
 // import ControllerQueryView from "./views/controllerQuery.js";
 import GraphView from "./views/graph.js";
@@ -30,14 +29,27 @@ import config from "./config.js";
 
 /**
  * BGPExplorer
- * @link https://bgp-data.net
+ * @version 1.0
+ * @description BGPExplorer is a visualization tool tailored for exploring and analyzing historical BGP (Border Gateway Protocol) data. 
+ *              It offers a unique perspective on BGP dynamics, aiming to assist researchers and network operators in understanding the evolution of 
+ *              inter-domain routing over time. Although an independent development, BGPExplorer draws conceptual inspiration from the notable work of BGPlay.
+ *              Specifically, BGPExplorer leverages ideas about the visual representation of BGP changes, similar to the visualizations presented in BGPlay, 
+ *              but re-imagines these concepts through its original architecture and methods.
+ * 
  * @author Robin Röper
- * @attributions
- * - http://bgplayjs.com/?section=bgplay
- * - https://stat.ripe.net
- * @description BGPExplorer is a visualization tool for BGP data.
- *              Inspired by BGPlay https://bgplayjs.com/?section=bgplay
- * @license LICENSE.md - Usage subject to the stated conditions.
+ * 
+ * @attributions This project is indebted to the foundational ideas behind BGPlay:
+ *               - BGPlay, originally developed as part of Massimo Candela’s Master’s Thesis at Roma Tre University (Italy), 
+ *                 under the supervision of the Computer Networks Research Group, with the support of RIPE NCC.
+ *               - BGPlay's source of inspiration can be found at [BGPlay website](http://bgplayjs.com/?section=bgplay), 
+ *                 which presents a detailed breakdown of its visualization approach and its evolution over time.
+ *               - To access BGPlay’s RIPEstat demo and experience its real-time visualizations, please visit [RIPEstat](https://stat.ripe.net).
+ *               - Special thanks to the BGPlay development team for their contributions to visualizing inter-domain routing complexities and creating 
+ *                 an interactive, browser-compatible tool that has paved the way for other network analysis solutions.
+ * 
+ * @see https://bgplayjs.com/?section=bgplay for BGPlay’s About page and its visualization methodology.
+ * @see https://stat.ripe.net for BGPlay’s integration with RIPEstat.
+ * @see Paper: Visualizing Interdomain Routing with BGPlay - Lorenzo Colitti, Giuseppe Di Battista, Federico Mariani, Maurizio Patrignani, Maurizio Pizzonia. (DOI:10.7155/jgaa.00102)
  */
 class BGPExplorer {
   config = config;
