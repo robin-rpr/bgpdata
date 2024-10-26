@@ -11,6 +11,8 @@ BGPDATA aims to help researchers and network operators to get insights into thei
 
 The motivation for this project is to provide the tools and experimental platform to study how RIS data could be aggregated on [RIPEstat](https://stat.ripe.net/) in a way that reconciles the historical and live data for research and analysis.
 
+<img title="Data Flow" src="static/images/dataflow.svg" height="500" align="left" />
+
 ## Prerequisites
 
 Before you begin, ensure you have the following installed on your system:
@@ -61,7 +63,7 @@ This command will:
 
 Once the services are up and running, you can access the user interface at [`http://localhost:8080`](http://localhost:8080).
 We also provide a REST API at [`http://localhost:8080/api/v1/`](http://localhost:8080/api/v1/) for programmatic access to the data (coming soon).
-As well as a Grafana dashboard at [`http://localhost:3000`](http://localhost:3000) to visualize the data and performance metrics.
+As well as a Grafana dashboard at [`http://localhost:3000`](http://localhost:3000) to visualize the data and performance metrics (internal only).
 
 # Acknowledgments
 
