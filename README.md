@@ -5,7 +5,7 @@
 
 ---
 
-[https://bgp-data.net](https://bgp-data.net/?ref=github) - BGP Data Collection and Analytics Service
+[https://bgp-data.net](https://bgp-data.net/?ref=github) — BGP Data Collection and Analytics Service
 
 BGPDATA aims to help researchers and network operators to get insights into their network by providing a scalable and reliable way to analyze and inspect historical and live BGP data from [RIPE NCC RIS](https://ris.ripe.net/).
 
