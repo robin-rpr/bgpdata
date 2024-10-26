@@ -11,7 +11,7 @@ BGPDATA aims to help researchers and network operators to get insights into thei
 
 The motivation for this project is to provide the tools and experimental platform to study how RIS data could be aggregated on [RIPEstat](https://stat.ripe.net/) in a way that reconciles the historical and live data for research and analysis.
 
-<img title="Data Flow" src="static/images/dataflow.png" height="500" />
+<img title="Data Flow" src="static/images/dataflow.png" height="450" />
 
 ## Prerequisites
 
