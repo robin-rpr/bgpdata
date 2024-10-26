@@ -36,10 +36,10 @@ cd bgpdata
 
 The project directory contains the following files:
 
--   `Dockerfile`: Dockerfile for building the Flask application image.
--   `docker-compose.yml`: Docker Compose file to set up the Flask and MongoDB services (for development).
--   `requirements.txt`: List of Python dependencies for the Flask application.
--   `app.py`: The Flask application code.
+-   `Dockerfile`: Dockerfile for building the application image.
+-   `docker-compose.yml`: Docker Compose file to set up the application and OpenBMP services (for development).
+-   `requirements.txt`: List of Python dependencies for the application.
+-   `app.py`: The application code.
 -   `Makefile`: Makefile for building and starting the services.
 
 ### Build and Start the Services
