@@ -71,7 +71,7 @@ As well as a Grafana dashboard at [`http://localhost:3000`](http://localhost:300
 -   [Tim Evens](https://github.com/TimEvens) for his leading role in the development of the OpenBMP Suite
 -   [RIPEstat](https://stat.ripe.net/) for their incredible infrastructure and data visualization
 -   [RIPE Atlas](https://atlas.ripe.net/) for providing the RIPE Atlas infrastructure and providing mesaurement data for this project
--   [Massimo Candela](https://www.linkedin.com/in/massimocandela) for his outstanding work on [BGPPlay](https://bgplayjs.com/)
+-   [Massimo Candela](https://www.linkedin.com/in/massimocandela) for his outstanding work on [BGPlay](https://bgplayjs.com/)
 -   [Fanmin Shi](https://www.linkedin.com/in/fanmin-shi-9a572120/) for his support on the BMPv3 implementation and K8s integration
 -   [Christian Teuschel](https://www.linkedin.com/in/cteuschel/) for his inspiration for this project and operation of RIPEstat at the RIPE NCC
 -   [Ben Cartwright-Cox](https://benjojo.co.uk/) for the development of [BGP.tools](https://bgp.tools/) and service to the Internet Community
