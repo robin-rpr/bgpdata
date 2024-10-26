@@ -24,7 +24,6 @@ from utils.postmark import postmark
 from utils.database import PostgreSQL
 from utils.transformers import time_ago, hash_text, format_text, sanitize_text
 from utils.validators import is_authenticated, is_onboarded, is_valid_email
-from utils.filters import find_author_by_id
 from utils.generators import generate_verification_code
 from views.user import user_blueprint
 from datetime import datetime, timedelta
@@ -33,6 +32,7 @@ from sqlalchemy import text
 import urllib.parse
 import importlib
 import logging
+import asyncio
 import atexit
 import random
 import httpx
@@ -137,7 +137,6 @@ Jinja
 app.jinja_env.filters['time_ago'] = time_ago
 app.jinja_env.filters['format'] = format_text
 app.jinja_env.filters['sanitize'] = sanitize_text
-app.jinja_env.filters['find_author_by_id'] = find_author_by_id
 
 """
 Authentication
@@ -448,7 +447,7 @@ if __name__ == '__main__':
                 
                 # Run the main function of the imported service
                 if hasattr(service_module, 'main'):
-                    service_module.main()
+                    asyncio.run(service_module.main())
                 else:
                     print(f"The service '{service_name}' does not have a main() function.")
                     sys.exit(1)
