@@ -803,9 +803,11 @@ class BMPConverter:
         if ':' in peer_ip:
             # IPv6 address
             peer_address = socket.inet_pton(socket.AF_INET6, peer_ip)
+            peer_flags |= 0x80  # Set the 'IPv6 Peer' flag (bit 0)
         else:
             # IPv4 address
             peer_address = b'\x00' * 12 + socket.inet_pton(socket.AF_INET, peer_ip)
+            # 'IPv6 Peer' flag remains unset (IPv4)
 
         # For Peer BGP ID, we'll use zeros (could be improved)
         peer_bgp_id = b'\x00' * 4
@@ -902,16 +904,12 @@ async def main():
     host = os.getenv('OPENBMP_COLLECTOR_HOST')
     port = int(os.getenv('OPENBMP_COLLECTOR_PORT'))
 
-    loop = asyncio.get_event_loop()
     start_time = time.time()
 
     while True:
         try:
             # Create a non-blocking socket
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setblocking(False)
-            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # Disable Nagle's algorithm for low-latency sending
-            await loop.sock_connect(sock, (host, port))  # Attempt to connect
+            reader, writer = await asyncio.open_connection(host, port)
             logger.info(f"Connected to OpenBMP collector at {host}:{port}")
             break  # Success
         except (OSError, socket.error) as e:
@@ -942,6 +940,11 @@ async def main():
     NORMAL_POLL_INTERVAL = 5.0                # Slow poll when caught up
     TIME_LAG_THRESHOLD = timedelta(minutes=5) # Consider behind if messages are older than 5 minutes
     FAILURE_RETRY_DELAY = 5                   # Delay in seconds before retrying a failed message
+
+    # Rate limiting variables
+    MESSAGES_PER_SECOND = 100                 # Messages per second (increase if needed)
+    last_send_time = time.time()
+    messages_sent = 0
 
     # Initialize status dictionary to share variables between main and log_status
     status = {
@@ -996,12 +999,24 @@ async def main():
                 
                 # Send each BMP message individually over the persistent TCP connection
                 for message in messages:
-                    
                     try:
                         # Send the message over the persistent TCP connection
-                        await loop.sock_sendall(sock, message)
+                        writer.write(message)
+                        await writer.drain()
                         # Update the bytes sent counter
                         status['bytes_sent_since_last_log'] += len(message)
+                        messages_sent += 1
+
+                        # Check if rate limit is exceeded
+                        if messages_sent >= MESSAGES_PER_SECOND:
+                            # Sleep for the remainder of the second
+                            current_time = time.time()
+                            elapsed_time = current_time - last_send_time
+                            sleep_time = 1.0 - elapsed_time
+                            if sleep_time > 0:
+                                await asyncio.sleep(sleep_time)
+                            messages_sent = 0
+                            last_send_time = time.time()
                     except Exception as e:
                         logger.error("Error occurred while sending data over the socket.", exc_info=True)
                         # Wait 10 seconds before retrying
@@ -1020,9 +1035,15 @@ async def main():
     except Exception as e:
         logger.error("Fatal error", exc_info=True)
     finally:
-        consumer.close()
+        await consumer.stop()
+        writer.close()
+        await writer.wait_closed()
         # Cancel the logging task when exiting
         logging_task.cancel()
+        try:
+            await logging_task
+        except asyncio.CancelledError:
+            pass
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -26,7 +26,7 @@ help: ## Show help message
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 up: ## Start the application in detached mode (rebuilding images if necessary)
-	$(DC) up --build -d
+	$(DC) up
 
 down: ## Stop the application and remove containers, networks, and volumes
 	$(DC) down --remove-orphans
