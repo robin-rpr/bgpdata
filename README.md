@@ -65,7 +65,7 @@ Once the services are up and running, you can access the user interface at [`htt
 We also provide a REST API at [`http://localhost:8080/api/v1/`](http://localhost:8080/api/v1/) for programmatic access to the data (coming soon).
 As well as a Grafana dashboard at [`http://localhost:3000`](http://localhost:3000) to visualize the data and performance metrics (internal only).
 
-# Acknowledgments
+# ACKs
 
 -   [RIS](https://ris.ripe.net/) for providing the BGP data and collector infrastructure
 -   [RIPE NCC](https://www.ripe.net/) for providing the RIS Live Kafka infrastructure
