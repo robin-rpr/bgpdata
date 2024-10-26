@@ -21,7 +21,7 @@ import socket
 
 class BMPv3:
     """
-    A class to convert structured data into BMPv3 (RFC7854) messages.
+    Turn structured data into BMPv3 (RFC7854) messages.
     https://datatracker.ietf.org/doc/html/rfc7854
 
     # Author: Robin Röper <rroeper@ripe.net>
@@ -49,7 +49,7 @@ class BMPv3:
         encode_prefix(prefix: str) -> bytes:
             Encode a prefix into bytes as per BGP specification.
     """
-    
+
     # BMP header lengths (not counting the version in the common hdr)
     BMP_HDRv3_LEN = 6             # BMP v3 header length, not counting the version
     BMP_HDRv1v2_LEN = 43
