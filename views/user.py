@@ -2,7 +2,7 @@
 BGPDATA - BGP Data Collection and Analytics Service
 
 This software is part of the BGPDATA project, which is designed to collect, process, and analyze BGP data from various sources.
-It helps researchers and network operators get insights into their network by providing a scalable and reliable way to collect and process BGP data.
+It helps researchers and network operators get insights into their network by providing a scalable and reliable way to analyze and inspect historical and live BGP data from RIPE NCC RIS.
 
 Author: Robin Röper
 
