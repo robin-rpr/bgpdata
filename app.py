@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import text
 import urllib.parse
+import importlib
 import logging
 import atexit
 import random
@@ -54,7 +55,7 @@ app.logger.setLevel(logging.INFO)
 
 # Initialize CORS
 cors_origin = [
-    'https://bgpdata.io',
+    'https://bgp-data.net',
     'http://localhost:8080'
 ]
 
@@ -420,12 +421,21 @@ if __name__ == '__main__':
         # Get the service name from the command-line arguments
         service_index = sys.argv.index('--service') + 1
         if service_index < len(sys.argv):
+            # Get the service name from the command-line arguments
             service_name = sys.argv[service_index]
-            service_path = os.path.join('services', f"{service_name}.py")
-            if os.path.exists(service_path):
-                # Execute the service script
-                os.system(f'python {service_path}')
-            else:
+            module_name = f"services.{service_name}"
+            
+            try:
+                # Dynamically import the service module
+                service_module = importlib.import_module(module_name)
+                
+                # Run the main function of the imported service
+                if hasattr(service_module, 'main'):
+                    service_module.main()
+                else:
+                    print(f"The service '{service_name}' does not have a main() function.")
+                    sys.exit(1)
+            except ModuleNotFoundError:
                 print(f"Service '{service_name}' not found in the 'services' directory.")
                 sys.exit(1)
         else:
