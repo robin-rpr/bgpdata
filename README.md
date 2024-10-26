@@ -7,9 +7,9 @@
 
 BGP Data Collection and Analytics Service
 
-BGPDATA aims to help researchers and network operators to get insights into their network by providing a scalable and reliable way to analyze and inspect historical and live BGP data from RIPE NCC RIS.
+BGPDATA aims to help researchers and network operators to get insights into their network by providing a scalable and reliable way to analyze and inspect historical and live BGP data from [RIPE NCC RIS](https://ris.ripe.net/).
 
-The motivation for this project is to provide the tools and experimental platform to study how RIS data could be aggregated on RIPEstat in a way that reconciles the historical and live data for research and analysis.
+The motivation for this project is to provide the tools and experimental platform to study how RIS data could be aggregated on [RIPEstat](https://stat.ripe.net/) in a way that reconciles the historical and live data for research and analysis.
 
 ## Prerequisites
 
@@ -55,7 +55,7 @@ This command will:
 1. Build the Docker image for the various services.
 2. Start the services and initialize the Databases.
 3. Serve a user interface at [`http://localhost:8080`](http://localhost:8080)
-4. And begin the data collection process from RIPE NCC [RIS](https://ris.ripe.net/) Live.
+4. And begin the data collection process from [RIPE NCC RIS](https://ris.ripe.net/) Live.
 
 ### Accessing the Application
 
