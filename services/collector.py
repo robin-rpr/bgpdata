@@ -306,7 +306,7 @@ async def log_status(status):
 
 async def main():
     """
-    Main function to consume messages from Kafka, process them, and insert into OpenBMP.
+    Main function to consume messages from RIS Raw Data Dumps and RIS Live Kafka, process them, and insert them into OpenBMP.
 
     This asynchronous function sets up a Kafka consumer, subscribes to the specified topic,
     and continuously polls for messages. It processes messages in batches, dynamically
