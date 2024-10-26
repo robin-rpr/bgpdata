@@ -416,4 +416,21 @@ async def asn(asn):
 #app.register_blueprint(user_blueprint, url_prefix='/user')
 
 if __name__ == '__main__':
-    app.run()
+    if '--service' in sys.argv:
+        # Get the service name from the command-line arguments
+        service_index = sys.argv.index('--service') + 1
+        if service_index < len(sys.argv):
+            service_name = sys.argv[service_index]
+            service_path = os.path.join('services', f"{service_name}.py")
+            if os.path.exists(service_path):
+                # Execute the service script
+                os.system(f'python {service_path}')
+            else:
+                print(f"Service '{service_name}' not found in the 'services' directory.")
+                sys.exit(1)
+        else:
+            print("Please provide a service name after '--service'")
+            sys.exit(1)
+    else:
+        # Run the Flask application if no service flag is provided
+        app.run()

@@ -79,11 +79,11 @@ services:
         volumes:
             - .:/app
         entrypoint: >
-            python services/collector.py
+            python app.py --service collector
 
     #core-aggregator:
     #    build: .
-    #    container_name: core-ris-peers
+    #    container_name: core-aggregator
     #    environment:
     #        - POSTGRESQL_DATABASE=postgresql+asyncpg://core:core@core-db:5432/default
     #        - REDIS_DATABASE=redis://redis:6379
@@ -94,7 +94,7 @@ services:
     #    volumes:
     #        - .:/app
     #    entrypoint: >
-    #        python services/ris_peers.py
+    #        python app.py --service aggregator
 
     ###
     # OpenBMP (Open Border Gateway Protocol Monitoring Protocol) services
