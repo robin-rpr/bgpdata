@@ -1,7 +1,10 @@
-# FOMBook
+# BGPDATA
 
-This project is a Social Media Network for Students and Alumni of the [FOM University](https://www.fom.de/) built using Flask with MongoDB and Docker.
-Using DigitalOcean Droplets, Load Balancers as well as managed MongoDB Database Clusters this application has the capability to scale up to thousands of concurrent users.
+BGP Data Collection and Analytics Service
+
+BGPDATA aims to help researchers and network operators to get insights into their network by providing a scalable and reliable way to analyze and inspect historical and live BGP data from RIPE NCC RIS.
+
+The motivation for this project is to provide the tools and experimental platform to study how RIS data could be aggregated on RIPEstat in a way that reconciles the historical and live data for research and analysis.
 
 ## Prerequisites
 
@@ -20,8 +23,8 @@ Follow these instructions to get the project up and running on your local machin
 First, clone the repository to your local machine:
 
 ```sh
-git clone git@github.com:robin-rpr/fombook.git
-cd fombook
+git clone git@github.com:robin-rpr/bgpdata.git
+cd bgpdata
 ```
 
 ### Project Structure
@@ -32,43 +35,44 @@ The project directory contains the following files:
 -   `docker-compose.yml`: Docker Compose file to set up the Flask and MongoDB services (for development).
 -   `requirements.txt`: List of Python dependencies for the Flask application.
 -   `app.py`: The Flask application code.
--   `init-mongo.js`: JavaScript initialization script for MongoDB.
+-   `Makefile`: Makefile for building and starting the services.
 
 ### Build and Start the Services
 
-To build and start the Flask and MongoDB services, run the following command in the project directory:
+To build and start BGPDATA, run the following command in the project directory:
 
 ```sh
-docker-compose up
+make up
 ```
 
 This command will:
 
-1. Build the Docker image for the Flask application.
-2. Start the MongoDB and Flask services.
-3. Initialize MongoDB with the specified database and collection.
+1. Build the Docker image for the various services.
+2. Start the services and initialize the Databases.
+3. Serve a user interface at [`http://localhost:8080`](http://localhost:8080)
+4. And begin the data collection process from RIPE NCC [RIS](https://ris.ripe.net/) Live.
 
 ### Accessing the Application
 
-Once the services are up and running, you can access the Flask application at [`http://localhost:8080`](http://localhost:8080).
+Once the services are up and running, you can access the user interface at [`http://localhost:8080`](http://localhost:8080).
+We also provide a REST API at [`http://localhost:8080/api/v1/`](http://localhost:8080/api/v1/) for programmatic access to the data (coming soon).
+As well as a Grafana dashboard at [`http://localhost:3000`](http://localhost:3000) to visualize the data and performance metrics.
 
 # Acknowledgments
 
--   https://github.com/jenizar/flask-mongodb-crud
--   https://www.codeproject.com/Articles/1255416/Simple-Python-Flask-Program-with-MongoDB
--   https://stackoverflow.com/questions/45732838/authentication-failed-to-connect-to-mongodb-using-pymongo
--   https://stackoverflow.com/questions/40346767/pymongo-auth-failed-in-python-script
+-   [RIS](https://ris.ripe.net/) for providing the BGP data and collector infrastructure
+-   [RIPE NCC](https://www.ripe.net/) for providing the RIS Live Kafka infrastructure
+-   [OpenBMP](https://www.openbmp.org/) for providing the invaluable OpenBMP Suite used in-depth in this project
+-   [Tim Evens](https://github.com/tevens) for his leading role in the development of the OpenBMP Suite
+-   [RIPEstat](https://stat.ripe.net/) for their incredible infrastructure and data visualization
+-   [RIPE Atlas](https://atlas.ripe.net/) for providing the impressive RIPE Atlas infrastructure and providing mesaurement data for this project
+-   [Massimo Candela](https://github.com/mcandela) for his outstanding work on [BGPPlay](https://bgplayjs.com/)
+-   [Fanmin Shi](https://github.com/fanminshi) for his support on the BMPv3 implementation and K8s integration
+-   [Christian Teuschel](https://github.com/cteuschel) for his inspiration for this project and operation of RIPEstat at the RIPE NCC
+-   [Ben Cartwick Cox](https://github.com/bencox) for the development of [BGP.tools](https://bgp.tools/) and service to the Internet Community
+-   [CAIDA BGPStream](https://bgpstream.caida.org/) for providing a versatile BGP data streaming library
+-   [Postmark](https://postmarkapp.com/) for providing the email service
 
 ## License
 
-```
-/**
- * Copyright (C) FOMBook.com - All Rights Reserved
- * 
- * This source code is protected under international copyright law. All rights
- * reserved and protected by the copyright holders.
- * This file is confidential and only available to authorized individuals with the
- * permission of the copyright holders.  If you encounter this file and do not have
- * permission, please contact the copyright holders and delete this file.
- */
-```
+See [LICENSE](LICENSE)
