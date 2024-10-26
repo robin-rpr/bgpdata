@@ -25,7 +25,31 @@ class BMPv3:
     https://datatracker.ietf.org/doc/html/rfc7854
 
     # Author: Robin Röper <rroeper@ripe.net>
+
+    The BMPv3 class provides methods to build various BGP and BMP messages, including
+    KEEPALIVE, NOTIFICATION, UPDATE, and Peer Up/Down Notification messages. It also includes
+    utility functions to encode prefixes and path attributes as per BGP specifications.
+
+    Attributes:
+        None
+
+    Methods:
+        build_bgp_keepalive_message() -> bytes:
+            Build the BGP KEEPALIVE message in bytes.
+        build_bgp_notification_message(notification_message: dict) -> bytes:
+            Build the BGP NOTIFICATION message in bytes.
+        build_bgp_update_message(update_message: dict) -> bytes:
+            Build the BGP UPDATE message in bytes.
+        build_bmp_per_peer_header(peer_ip: str, peer_asn: int, timestamp: float) -> bytes:
+            Build the BMP Per-Peer Header.
+        construct_bmp_peer_up_message(peer_ip: str, peer_asn: int, timestamp: float) -> bytes:
+            Construct a BMP Peer Up Notification message.
+        construct_bmp_peer_down_message(peer_ip: str, peer_asn: int, timestamp: float, notification_message: dict) -> bytes:
+            Construct a BMP Peer Down Notification message.
+        encode_prefix(prefix: str) -> bytes:
+            Encode a prefix into bytes as per BGP specification.
     """
+    
     # BMP header lengths (not counting the version in the common hdr)
     BMP_HDRv3_LEN = 6             # BMP v3 header length, not counting the version
     BMP_HDRv1v2_LEN = 43
@@ -43,38 +67,7 @@ class BMPv3:
     BGP_VERSION = 4
     BGP_CAP_PARAM_TYPE = 2
     BGP_AS_TRANS = 23456          # BGP ASN when AS exceeds 16bits
-
-    def __init__(self):
-        """
-        A class to convert structured data into BMPv3 (RFC7854) messages.
-        https://datatracker.ietf.org/doc/html/rfc7854
-
-        # Author: Robin Röper <rroeper@ripe.net>
-
-        The BMPv3 class provides methods to build various BGP and BMP messages, including
-        KEEPALIVE, NOTIFICATION, UPDATE, and Peer Up/Down Notification messages. It also includes
-        utility functions to encode prefixes and path attributes as per BGP specifications.
-
-        Attributes:
-            None
-
-        Methods:
-            build_bgp_keepalive_message() -> bytes:
-                Build the BGP KEEPALIVE message in bytes.
-            build_bgp_notification_message(notification_message: dict) -> bytes:
-                Build the BGP NOTIFICATION message in bytes.
-            build_bgp_update_message(update_message: dict) -> bytes:
-                Build the BGP UPDATE message in bytes.
-            build_bmp_per_peer_header(peer_ip: str, peer_asn: int, timestamp: float) -> bytes:
-                Build the BMP Per-Peer Header.
-            construct_bmp_peer_up_message(peer_ip: str, peer_asn: int, timestamp: float) -> bytes:
-                Construct a BMP Peer Up Notification message.
-            construct_bmp_peer_down_message(peer_ip: str, peer_asn: int, timestamp: float, notification_message: dict) -> bytes:
-                Construct a BMP Peer Down Notification message.
-            encode_prefix(prefix: str) -> bytes:
-                Encode a prefix into bytes as per BGP specification.
-        """
-
+        
     @staticmethod
     def construct_bmp_route_monitoring_message(peer_ip, peer_asn, timestamp, update_message):
         """
