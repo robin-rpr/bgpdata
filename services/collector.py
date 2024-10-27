@@ -290,11 +290,12 @@ async def log_status(status):
             - bytes_sent_since_last_log (int): The number of bytes sent since the last log.
     """
     while True:
-        await asyncio.sleep(5)  # Sleep for 5 seconds before logging
+        seconds = 5
+        await asyncio.sleep(seconds)  # Sleep for 5 seconds before logging
 
         # Compute kbps_counter
         bytes_sent = status['bytes_sent_since_last_log']
-        kbps_counter = (bytes_sent * 8) / 5 / 1000  # Convert bytes to kilobits per second
+        kbps_counter = (bytes_sent * 8) / seconds / 1000  # Convert bytes to kilobits per second
 
         logger.info(f"At time: {status['timestamp']}, "
                     f"Time lag: {status['time_lag'].total_seconds()} seconds, "
