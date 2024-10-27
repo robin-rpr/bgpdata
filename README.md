@@ -7,9 +7,12 @@
 
 [https://bgp-data.net](https://bgp-data.net/?ref=github) — BGP Data Collection and Analytics Service
 
-BGPDATA aims to help researchers and network operators to get insights into their network by providing a scalable and reliable way to analyze and inspect historical and live BGP data from [RIPE NCC RIS](https://ris.ripe.net/).
+BGPDATA helps researchers and network operators gain insights into their networks by providing a scalable and reliable way to analyze and inspect historical and live BGP data from [RIPE NCC RIS](https://ris.ripe.net/).
 
-The motivation for this project is to provide the tools and experimental platform to study how RIS data could be aggregated on [RIPEstat](https://stat.ripe.net/) in a way that reconciles the historical and live data for research and analysis.
+Additionally, this project provides tools and an experimental platform to study how RIS data can be aggregated on [RIPEstat](https://stat.ripe.net/), reconciling historical and live data for research and analysis.
+
+## Data Flow
+We collect both historical and live BGP data from RIPE NCC RIS to provide comprehensive insights. 
 
 <img title="Data Flow" src="static/images/dataflow.png" height="450" />
 
