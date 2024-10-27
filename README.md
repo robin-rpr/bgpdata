@@ -77,7 +77,7 @@ As well as a Grafana dashboard at [`http://localhost:3000`](http://localhost:300
 -   [RIPEstat](https://stat.ripe.net/) for their incredible infrastructure and data visualization
 -   [RIPE Atlas](https://atlas.ripe.net/) for providing the RIPE Atlas infrastructure and providing mesaurement data for this project
 -   [Massimo Candela](https://www.linkedin.com/in/massimocandela) for his outstanding work on [BGPlay](https://bgplayjs.com/)
--   [Fanmin Shi](https://www.linkedin.com/in/fanmin-shi-9a572120/) for his support on the BMPv3 implementation and K8s integration
+-   [Fanmin Shi](https://www.linkedin.com/in/fanmin-shi-9a572120/) for his assitance on the BMPv3 implementation and K8s integration
 -   [Christian Teuschel](https://www.linkedin.com/in/cteuschel/) for his inspiration for this project and operation of RIPEstat at the RIPE NCC
 -   [Ben Cartwright-Cox](https://benjojo.co.uk/) for the development of [BGP.tools](https://bgp.tools/) and service to the Internet Community
 -   [CAIDA BGPStream](https://bgpstream.caida.org/) for providing a versatile BGP data streaming library
