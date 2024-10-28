@@ -73,7 +73,7 @@ consumer_conf = {
     'bootstrap.servers': 'node01.kafka-pub.ris.ripe.net:9094,node02.kafka-pub.ris.ripe.net:9094,node03.kafka-pub.ris.ripe.net:9094',
     'group.id': f"bgpdata-{hostname}",
     'partition.assignment.strategy': 'roundrobin',
-    'enable.auto.commit': False,  # Disable automatic offset commit, handle manually
+    'enable.auto.commit': True,  # Enable automatic offset commit, we use RocksDB to store the offset
     'security.protocol': 'SASL_SSL',
     'sasl.mechanism': 'PLAIN',
     'sasl.username': os.getenv("SASL_KAFKA_USERNAME"),
@@ -337,7 +337,7 @@ async def log_status(status):
         kbps_counter = (bytes_sent * 8) / seconds / 1000  # Convert bytes to kilobits per second
 
         logger.info(f"At time: {status['timestamp']}, "
-                    f"Time lag: {status['time_lag'].total_seconds()} seconds, "
+                    f"Time lag: ~{status['time_lag'].total_seconds()} seconds, "
                     f"Transmitting at ~{kbps_counter:.2f} kbit/s")
 
         # Reset bytes_sent
