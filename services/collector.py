@@ -21,6 +21,7 @@ from protocols.bmp import BMPv3
 from typing import List
 from io import BytesIO
 import fastavro
+import rocksdbpy
 import logging
 import asyncio
 import socket
@@ -35,6 +36,37 @@ hostname = socket.gethostname()  # Get the machine's hostname
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# List of RRCs with locations
+# https://ris.ripe.net/docs/route-collectors/
+rrcs = [
+    "RRC00",  # Amsterdam, NL - multihop, global
+    "RRC01",  # London, GB - IXP, LINX, LONAP
+    # "RRC02",  # Paris, FR - IXP, SFINX (Historic)
+    "RRC03",  # Amsterdam, NL - IXP, AMS-IX, NL-IX
+    "RRC04",  # Geneva, CH - IXP, CIXP
+    "RRC05",  # Vienna, AT - IXP, VIX
+    "RRC06",  # Otemachi, JP - IXP, DIX-IE, JPIX
+    "RRC07",  # Stockholm, SE - IXP, Netnod
+    # "RRC08",  # San Jose, CA, US - IXP, MAE-WEST (Historic)
+    # "RRC09",  # Zurich, CH - IXP, TIX (Historic)
+    "RRC10",  # Milan, IT - IXP, MIX
+    "RRC11",  # New York, NY, US - IXP, NYIIX
+    "RRC12",  # Frankfurt, DE - IXP, DE-CIX
+    "RRC13",  # Moscow, RU - IXP, MSK-IX
+    "RRC14",  # Palo Alto, CA, US - IXP, PAIX
+    "RRC15",  # Sao Paolo, BR - IXP, PTTMetro-SP
+    "RRC16",  # Miami, FL, US - IXP, Equinix Miami
+    "RRC18",  # Barcelona, ES - IXP, CATNIX
+    "RRC19",  # Johannesburg, ZA - IXP, NAP Africa JB
+    "RRC20",  # Zurich, CH - IXP, SwissIX
+    "RRC21",  # Paris, FR - IXP, France-IX Paris and Marseille
+    "RRC22",  # Bucharest, RO - IXP, Interlan
+    "RRC23",  # Singapore, SG - IXP, Equinix Singapore
+    "RRC24",  # Montevideo, UY - multihop, LACNIC region
+    "RRC25",  # Amsterdam, NL - multihop, global
+    "RRC26",  # Dubai, AE - IXP, UAE-IX"
+]
 
 # Kafka Consumer configuration
 consumer_conf = {
@@ -257,25 +289,33 @@ def exabgp_to_bmp(data: dict) -> List[bytes]:
     return bmp_messages
 
 
-def on_rebalance(consumer, partitions):
+def on_assign(consumer, partitions, offset):
     """
-    Callback function to handle partition rebalancing.
+    Callback function to handle partition assigning/rebalancing.
 
-    This function is called when the consumer's partitions are rebalanced. It logs the
+    This function is called when the consumer's partitions are assigned/rebalanced. It logs the
     assigned partitions and handles any errors that occur during the rebalancing process.
 
     Args:
         consumer: The Kafka consumer instance.
         partitions: A list of TopicPartition objects representing the newly assigned partitions.
+        offset: The offset to assign to the partitions.
     """
     try:
         if partitions[0].error:
             logger.error(f"Rebalance error: {partitions[0].error}")
         else:
             logger.info(f"Assigned partitions: {[p.partition for p in partitions]}")
+
+            # Set the offset for each partition
+            for partition in partitions:
+                logger.info(f"Setting offset for partition {partition.partition} to {offset}")
+                #partition.offset = offset
+            
+            # Assign the partitions to the consumer
             consumer.assign(partitions)
     except Exception as e:
-        logger.error(f"Error handling rebalance: {e}", exc_info=True)
+        logger.error(f"Error handling assignment: {e}", exc_info=True)
 
 async def log_status(status):
     """
@@ -314,19 +354,26 @@ async def main():
     adjusts polling intervals based on message lag, and handles various error scenarios.
 
     The function performs the following key operations:
-    1. Sets up a Kafka consumer with specified configuration and callbacks.
+    1. Sets up RocksDB and a Kafka consumer with specified configuration and callbacks.
     2. Establishes a persistent TCP connection to the OpenBMP collector.
     3. May perform initial catchup by Route Injecting MRT records from RIS Raw Data Dumps.
     4. Dynamically adjusts RIS Live Kafka polling intervals based on message time lag.
     5. Processes messages, including deserialization to exaBGP JSON and translation to BMPv3 (RFC7854).
-    6. Inserts processed BMP messages into the OpenBMP Kafka topic.
+    6. Sends processed BMP messages over TCP to the OpenBMP collector and updates the offset in RocksDB.
     7. Handles various error scenarios and implements retry logic.
 
     The function runs indefinitely until interrupted or an unhandled exception occurs.
+    This script will be able to recover gracefully through the use of RocksDB.
     """
+
+    # Wait for 10 seconds before starting (prevents possible self-inflicted dos attack)
+    await asyncio.sleep(10)
+
+    # Create RocksDB database
+    db = rocksdbpy.open_default("checkpoint.db")
+
     # Create Kafka consumer
     consumer = Consumer(consumer_conf)
-    consumer.subscribe(['ris-live'])
 
     # Create OpenBMP Socket with retry until timeout
     timeout = int(os.getenv('OPENBMP_COLLECTOR_TIMEOUT', 30))  # Default to 30 seconds if not set
@@ -334,7 +381,6 @@ async def main():
     port = int(os.getenv('OPENBMP_COLLECTOR_PORT'))
 
     start_time = time.time()
-
     while True:
         try:
             # Create a non-blocking socket
@@ -354,21 +400,35 @@ async def main():
             logger.error("An unexpected error occurred while trying to connect to OpenBMP collector", exc_info=True)
             raise
 
-    # Set up callbacks
+    # Retrieve offset from RocksDB
+    offset = int.from_bytes(db.get(b'offset') or b'\x00', byteorder='big')
+    logger.info(f"Retrieved offset from RocksDB: {offset}")
+
+    if offset == 0:
+        # Route Inject MRT records from most recent RIS Raw Data Dump
+        logger.info("Route Injecting MRT records from most recent RIS Raw Data Dump")
+        pass
+
+    # Subscribe to Kafka from a specific offset value
     consumer.subscribe(
         ['ris-live'],
-        on_assign=on_rebalance,
+        on_assign=lambda c, p: on_assign(c, p, offset),
         on_revoke=lambda c, p: logger.info(f"Revoked partitions: {[part.partition for part in p]}")
     )
 
     # Initialize settings
+    BATCH_THRESHOLD = 10000                   # Number of messages to process before sending batch
+    MESSAGES_PER_SECOND = 5000                # Messages per second (increase if needed)
     CATCHUP_POLL_INTERVAL = 1.0               # Fast poll when behind in time
     NORMAL_POLL_INTERVAL = 5.0                # Slow poll when caught up
-    TIME_LAG_THRESHOLD = timedelta(minutes=5) # Consider behind if messages are older than 5 minutes
+    TIME_LAG_THRESHOLD = timedelta(minutes=5) # Consider behind if messages are older than n minutes
     FAILURE_RETRY_DELAY = 5                   # Delay in seconds before retrying a failed message
 
+    # Initialize batch variables
+    batch_messages = []
+    batch_messages_count = 0
+
     # Rate limiting variables
-    MESSAGES_PER_SECOND = 100                 # Messages per second (increase if needed)
     last_send_time = time.time()
     messages_sent = 0
 
@@ -385,85 +445,91 @@ async def main():
 
     try:
         while True:
-            msg = consumer.poll(timeout=status['poll_interval'])  # Use dynamically set poll_interval
+            # Poll for messages
+            msg = consumer.poll(timeout=status['poll_interval'])
             
+            # No message received, continue polling
             if msg is None:
                 continue
 
+            # Handle Kafka errors
             if msg.error():
                 if msg.error().code() == KafkaError._PARTITION_EOF:
-                    logger.info(f"End of partition reached: {err}")
+                    logger.info(f"End of partition reached: {msg.error()}")
                 elif msg.error().code() == KafkaError._THROTTLING:
-                    logger.warning(f"Kafka throttle event: {err}")
+                    logger.warning(f"Kafka throttle event: {msg.error()}")
                 else:
-                    logger.error(f"Kafka error: {err}", exc_info=True)
+                    logger.error(f"Kafka error: {msg.error()}", exc_info=True)
                 continue
 
-            try:
-                # Adjust polling interval based on how far behind the messages are
-                if status['time_lag'] > TIME_LAG_THRESHOLD:
-                    status['poll_interval'] = CATCHUP_POLL_INTERVAL # Faster polling if we're behind
-                else:
-                    status['poll_interval'] = NORMAL_POLL_INTERVAL # Slow down if we're caught up
+            # Adjust polling interval based on how far behind the messages are
+            if status['time_lag'] > TIME_LAG_THRESHOLD:
+                status['poll_interval'] = CATCHUP_POLL_INTERVAL # Faster polling if we're behind
+            else:
+                status['poll_interval'] = NORMAL_POLL_INTERVAL # Slow down if we're caught up
 
-                
-                # We've not reached the batch threshold, process the message.
-                value = msg.value()
+            # We've not reached the batch threshold, process the message.
+            value = msg.value()
 
-                # Remove the first 5 bytes
-                value = value[5:]
-                
-                # Deserialize the Avro encoded exaBGP message
-                parsed = fastavro.schemaless_reader(BytesIO(value), avro_schema)
+            # Remove the first 5 bytes (weird bytes that are prepended to the message)
+            value = value[5:]
+            
+            # Deserialize the Avro encoded exaBGP message
+            parsed = fastavro.schemaless_reader(BytesIO(value), avro_schema)
 
-                # Check if the message is significantly behind the current time
-                status['timestamp'] = datetime.fromtimestamp(parsed['timestamp'] / 1000)
-                status['time_lag'] = datetime.now() - status['timestamp']
+            # Check if the message is significantly behind the current time
+            status['timestamp'] = datetime.fromtimestamp(parsed['timestamp'] / 1000)
+            status['time_lag'] = datetime.now() - status['timestamp']
 
-                # Convert to BMP messages
-                messages = exabgp_to_bmp(json.loads(parsed['ris_live']))
-                
+            # Convert to BMP messages
+            messages = exabgp_to_bmp(json.loads(parsed['ris_live']))
+
+            # Add messages to batch
+            batch_messages.extend(messages)
+            batch_messages_count += len(messages)
+
+            # Send batch if threshold is reached
+            if batch_messages_count >= BATCH_THRESHOLD:
                 # Send each BMP message individually over the persistent TCP connection
-                for message in messages:
-                    try:
-                        # Send the message over the persistent TCP connection
-                        writer.write(message)
-                        await writer.drain()
-                        # Update the bytes sent counter
-                        status['bytes_sent_since_last_log'] += len(message)
-                        messages_sent += 1
+                for message in batch_messages:
+                    # Send the message over the persistent TCP connection
+                    writer.write(message)
+                    await writer.drain()
 
-                        # Check if rate limit is exceeded
-                        if messages_sent >= MESSAGES_PER_SECOND:
-                            # Sleep for the remainder of the second
-                            current_time = time.time()
-                            elapsed_time = current_time - last_send_time
-                            sleep_time = 1.0 - elapsed_time
-                            if sleep_time > 0:
-                                await asyncio.sleep(sleep_time)
-                            messages_sent = 0
-                            last_send_time = time.time()
-                    except Exception as e:
-                        logger.error("Error occurred while sending data over the socket.", exc_info=True)
-                        # Wait 10 seconds before retrying
-                        await asyncio.sleep(10)
-                        # Exit the service
-                        sys.exit("Service terminated due to broken TCP connection, exiting 1.")
+                    # Increment offset (Use 64 bytes for storage)
+                    # This is super important to do atomically, otherwise we might lose messages
+                    # Please don't change this without fully understanding the consequences!
+                    offset += 1
+                    db.set(b'offset', offset.to_bytes(64, byteorder='big'))
 
-                # Commit the offset after successful processing and transmission
-                consumer.commit()
+                    # Update the bytes sent counter
+                    status['bytes_sent_since_last_log'] += len(message)
+                    messages_sent += 1
 
-            except Exception as e:
-                logger.error("Failed to process message, retrying in %d seconds...", FAILURE_RETRY_DELAY, exc_info=True)
-                # Wait before retrying the message to avoid overwhelming Kafka
-                await asyncio.sleep(FAILURE_RETRY_DELAY)
+                    # Check if rate limit is exceeded
+                    if messages_sent >= MESSAGES_PER_SECOND:
+                        # Sleep for the remainder of the second
+                        current_time = time.time()
+                        elapsed_time = current_time - last_send_time
+                        sleep_time = 1.0 - elapsed_time
+                        if sleep_time > 0:
+                            await asyncio.sleep(sleep_time)
+                        messages_sent = 0
+                        last_send_time = time.time()
 
     except Exception as e:
         logger.error("Fatal error", exc_info=True)
     finally:
+        # Close the RocksDB database
+        db.close()
+
+        # Stop the consumer
         await consumer.stop()
+
+        # Close the writer
         writer.close()
         await writer.wait_closed()
+        
         # Cancel the logging task when exiting
         logging_task.cancel()
         try:

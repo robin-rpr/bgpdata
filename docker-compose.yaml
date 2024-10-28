@@ -39,7 +39,7 @@ services:
         container_name: core-db
         restart: unless-stopped
         healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U core"]
+            test: ["CMD-SHELL", "pg_isready -U core -d default"]
             interval: 30s
             timeout: 10s
             retries: 5

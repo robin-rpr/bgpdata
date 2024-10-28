@@ -32,3 +32,10 @@ static/styles/*.css
 # Operating System Files
 # =========================
 
+.DS_Store
+.idea
+*.log
+*.pyc
+*.tgz
+*.gz
+*.db
