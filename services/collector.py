@@ -338,7 +338,6 @@ async def log_status(status):
 
         logger.info(f"At time: {status['timestamp']}, "
                     f"Time lag: {status['time_lag'].total_seconds()} seconds, "
-                    f"Bytes sent: {bytes_sent}, "
                     f"Transmitting at ~{kbps_counter:.2f} kbit/s")
 
         # Reset bytes_sent
@@ -418,18 +417,6 @@ async def main():
         on_revoke=lambda c, p: logger.info(f"Revoked partitions: {[part.partition for part in p]}")
     )
 
-    # Initialize settings
-    BATCH_THRESHOLD = 40000                   # Number of messages to process before sending batch
-    MESSAGES_PER_SECOND = 20000               # Messages per second (increase if needed)
-
-    # Initialize batch variables
-    batch_messages = []
-    batch_messages_count = 0
-
-    # Rate limiting variables
-    last_send_time = time.time()
-    messages_sent = 0
-
     # Initialize status dictionary to share variables between main and log_status
     status = {
         'timestamp': datetime.now(),           # Initialize timestamp
@@ -475,46 +462,20 @@ async def main():
             # Convert to BMP messages
             messages = exabgp_to_bmp(json.loads(parsed['ris_live']))
 
-            # Add messages to batch
-            batch_messages.extend(messages)
-            batch_messages_count += len(messages)
+            # Send each BMP message individually over the persistent TCP connection
+            for message in messages:
+                # Send the message over the persistent TCP connection
+                writer.write(message)
+                await writer.drain()
 
-            # Send batch if threshold is reached
-            if batch_messages_count >= BATCH_THRESHOLD:
-                # Send each BMP message individually over the persistent TCP connection
-                for message in batch_messages:
-                    # Send the message over the persistent TCP connection
-                    writer.write(message)
-                    await writer.drain()
+                # Increment offset (Use 64 bytes for storage)
+                # This is super important to do atomically, otherwise we might lose messages
+                # Please don't change this without fully understanding the consequences!
+                offset += 1
+                db.set(b'offset', offset.to_bytes(64, byteorder='big'))
 
-                    # Increment offset (Use 64 bytes for storage)
-                    # This is super important to do atomically, otherwise we might lose messages
-                    # Please don't change this without fully understanding the consequences!
-                    offset += 1
-                    db.set(b'offset', offset.to_bytes(64, byteorder='big'))
-
-                    # Update the bytes sent counter
-                    status['bytes_sent'] += len(message)
-                    messages_sent += 1
-
-                    # Check if rate limit is exceeded
-                    if messages_sent >= MESSAGES_PER_SECOND:
-                        # Sleep for the remainder of the second
-                        current_time = time.time()
-                        elapsed_time = current_time - last_send_time
-                        sleep_time = 1.0 - elapsed_time
-
-                        # Sleep for the remainder of the second
-                        if sleep_time > 0:
-                            await asyncio.sleep(sleep_time)
-
-                        # Reset messages sent counter
-                        messages_sent = 0
-                        last_send_time = time.time()
-
-                # Reset batch variables
-                batch_messages = []
-                batch_messages_count = 0
+                # Update the bytes sent counter
+                status['bytes_sent'] += len(message)
 
     except Exception as e:
         logger.error("Fatal error", exc_info=True)
