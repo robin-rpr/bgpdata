@@ -326,7 +326,6 @@ async def log_status(status):
         status (dict): A dictionary containing the following keys:
             - timestamp (datetime): The most recent timestamp of the messages.
             - time_lag (timedelta): The current time lag of the messages.
-            - poll_interval (float): The current polling interval in seconds.
             - bytes_sent_since_last_log (int): The number of bytes sent since the last log.
     """
     while True:
@@ -339,7 +338,6 @@ async def log_status(status):
 
         logger.info(f"At time: {status['timestamp']}, "
                     f"Time lag: {status['time_lag'].total_seconds()} seconds, "
-                    f"Poll interval: {status['poll_interval']} seconds, "
                     f"Transmitting at ~{kbps_counter:.2f} kbit/s")
 
         # Reset bytes_sent_since_last_log
@@ -417,12 +415,8 @@ async def main():
     )
 
     # Initialize settings
-    BATCH_THRESHOLD = 10000                   # Number of messages to process before sending batch
-    MESSAGES_PER_SECOND = 5000                # Messages per second (increase if needed)
-    CATCHUP_POLL_INTERVAL = 1.0               # Fast poll when behind in time
-    NORMAL_POLL_INTERVAL = 5.0                # Slow poll when caught up
-    TIME_LAG_THRESHOLD = timedelta(minutes=5) # Consider behind if messages are older than n minutes
-    FAILURE_RETRY_DELAY = 5                   # Delay in seconds before retrying a failed message
+    BATCH_THRESHOLD = 40000                   # Number of messages to process before sending batch
+    MESSAGES_PER_SECOND = 20000               # Messages per second (increase if needed)
 
     # Initialize batch variables
     batch_messages = []
@@ -436,7 +430,6 @@ async def main():
     status = {
         'timestamp': datetime.now(),           # Initialize timestamp
         'time_lag': timedelta(0),              # Initialize time lag
-        'poll_interval': NORMAL_POLL_INTERVAL, # Initialize with the normal poll interval
         'bytes_sent_since_last_log': 0,        # Initialize bytes sent counter
     }
 
@@ -446,7 +439,7 @@ async def main():
     try:
         while True:
             # Poll for messages
-            msg = consumer.poll(timeout=status['poll_interval'])
+            msg = consumer.poll(timeout=1.0)
             
             # No message received, continue polling
             if msg is None:
@@ -461,12 +454,6 @@ async def main():
                 else:
                     logger.error(f"Kafka error: {msg.error()}", exc_info=True)
                 continue
-
-            # Adjust polling interval based on how far behind the messages are
-            if status['time_lag'] > TIME_LAG_THRESHOLD:
-                status['poll_interval'] = CATCHUP_POLL_INTERVAL # Faster polling if we're behind
-            else:
-                status['poll_interval'] = NORMAL_POLL_INTERVAL # Slow down if we're caught up
 
             # We've not reached the batch threshold, process the message.
             value = msg.value()
