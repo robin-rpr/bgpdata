@@ -326,22 +326,23 @@ async def log_status(status):
         status (dict): A dictionary containing the following keys:
             - timestamp (datetime): The most recent timestamp of the messages.
             - time_lag (timedelta): The current time lag of the messages.
-            - bytes_sent_since_last_log (int): The number of bytes sent since the last log.
+            - bytes_sent (int): The number of bytes sent since the last log.
     """
     while True:
         seconds = 5
         await asyncio.sleep(seconds)  # Sleep for 5 seconds before logging
 
         # Compute kbps_counter
-        bytes_sent = status['bytes_sent_since_last_log']
+        bytes_sent = status['bytes_sent']
         kbps_counter = (bytes_sent * 8) / seconds / 1000  # Convert bytes to kilobits per second
 
         logger.info(f"At time: {status['timestamp']}, "
                     f"Time lag: {status['time_lag'].total_seconds()} seconds, "
+                    f"Bytes sent: {bytes_sent}, "
                     f"Transmitting at ~{kbps_counter:.2f} kbit/s")
 
-        # Reset bytes_sent_since_last_log
-        status['bytes_sent_since_last_log'] = 0
+        # Reset bytes_sent
+        status['bytes_sent'] = 0
 
 async def main():
     """
@@ -372,6 +373,9 @@ async def main():
 
     # Create Kafka consumer
     consumer = Consumer(consumer_conf)
+
+    # Get running asyncio loop
+    loop = asyncio.get_running_loop()
 
     # Create OpenBMP Socket with retry until timeout
     timeout = int(os.getenv('OPENBMP_COLLECTOR_TIMEOUT', 30))  # Default to 30 seconds if not set
@@ -430,7 +434,7 @@ async def main():
     status = {
         'timestamp': datetime.now(),           # Initialize timestamp
         'time_lag': timedelta(0),              # Initialize time lag
-        'bytes_sent_since_last_log': 0,        # Initialize bytes sent counter
+        'bytes_sent': 0,                       # Initialize bytes sent counter
     }
 
     # Start logging task that is updated within the loop
@@ -439,7 +443,7 @@ async def main():
     try:
         while True:
             # Poll for messages
-            msg = consumer.poll(timeout=1.0)
+            msg = await loop.run_in_executor(None, consumer.poll, 1.0)
             
             # No message received, continue polling
             if msg is None:
@@ -490,7 +494,7 @@ async def main():
                     db.set(b'offset', offset.to_bytes(64, byteorder='big'))
 
                     # Update the bytes sent counter
-                    status['bytes_sent_since_last_log'] += len(message)
+                    status['bytes_sent'] += len(message)
                     messages_sent += 1
 
                     # Check if rate limit is exceeded
@@ -499,10 +503,18 @@ async def main():
                         current_time = time.time()
                         elapsed_time = current_time - last_send_time
                         sleep_time = 1.0 - elapsed_time
+
+                        # Sleep for the remainder of the second
                         if sleep_time > 0:
                             await asyncio.sleep(sleep_time)
+
+                        # Reset messages sent counter
                         messages_sent = 0
                         last_send_time = time.time()
+
+                # Reset batch variables
+                batch_messages = []
+                batch_messages_count = 0
 
     except Exception as e:
         logger.error("Fatal error", exc_info=True)
@@ -511,7 +523,7 @@ async def main():
         db.close()
 
         # Stop the consumer
-        await consumer.stop()
+        consumer.stop()
 
         # Close the writer
         writer.close()
