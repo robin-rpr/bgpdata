@@ -343,6 +343,83 @@ async def log_status(status):
         # Reset bytes_sent
         status['bytes_sent'] = 0
 
+async def consumer_task(consumer, queue, status):
+    """
+    Task to poll messages from Kafka and add them to the queue.
+
+    Args:
+        consumer (confluent_kafka.Consumer): The Kafka consumer instance.
+        queue (asyncio.Queue): The queue to add the messages to.
+        status (dict): The status dictionary to update the time lag.
+    """
+    loop = asyncio.get_running_loop()
+    
+    while True:
+        # Poll for messages
+        msg = await loop.run_in_executor(None, consumer.poll, 1.0)
+        
+        if msg is None:
+            continue
+
+        # Handle Kafka errors
+        if msg.error():
+            if msg.error().code() == KafkaError._PARTITION_EOF:
+                logger.info(f"End of partition reached: {msg.error()}")
+            elif msg.error().code() == KafkaError._THROTTLING:
+                logger.warning(f"Kafka throttle event: {msg.error()}")
+            else:
+                logger.error(f"Kafka error: {msg.error()}", exc_info=True)
+            continue
+
+        # Process the message
+        value = msg.value()
+
+        # Remove the first 5 bytes (weird bytes that are prepended to the message)
+        value = value[5:]
+
+        # Parse the Avro encoded exaBGP message
+        parsed = fastavro.schemaless_reader(BytesIO(value), avro_schema)
+
+        # Update the timestamp and time lag
+        status['timestamp'] = datetime.fromtimestamp(parsed['timestamp'] / 1000)
+        status['time_lag'] = datetime.now() - status['timestamp']
+
+        # Parse to BMP messages and add to the queue
+        messages = exabgp_to_bmp(json.loads(parsed['ris_live']))
+        for message in messages:
+            await queue.put((message, msg.offset()))
+
+
+async def sender_task(queue, writer, db, status):
+    """
+    Task to transmit messages from the queue to the TCP socket.
+    Only updates offset in RocksDB once message is successfully sent.
+
+    Args:
+        queue (asyncio.Queue): The queue containing the messages to send.
+        writer (asyncio.StreamWriter): The TCP writer to send the messages over.
+        db (rocksdbpy.DB): The RocksDB database to store the offset.
+        status (dict): The status dictionary to update the bytes sent counter.
+    """
+    while True:
+        message, offset = await queue.get()
+
+        try:
+            # Send the message over TCP
+            writer.write(message)
+            await writer.drain()
+            status['bytes_sent'] += len(message)
+            
+            # Save offset after successful send
+            db.set(b'offset', offset.to_bytes(64, byteorder='big'))
+            queue.task_done()
+
+        except Exception as e:
+            logger.error("Error sending message over TCP", exc_info=True)
+            # On failure, re-queue the message
+            await queue.put((message, offset))
+
+
 async def main():
     """
     Main function to consume messages from RIS Raw Data Dumps and RIS Live Kafka, process them, and insert them into OpenBMP.
@@ -424,59 +501,19 @@ async def main():
         'bytes_sent': 0,                       # Initialize bytes sent counter
     }
 
+    # Define queue with a limit
+    queue = asyncio.Queue(maxsize=100000)      # Define queue with a limit
+
     # Start logging task that is updated within the loop
     logging_task = asyncio.create_task(log_status(status))
 
+    # Start consumer task that is queueing messages
+    consumer_coro = consumer_task(consumer, queue, status)
+    sender_coro = sender_task(queue, writer, db, status)
+
     try:
-        while True:
-            # Poll for messages
-            msg = await loop.run_in_executor(None, consumer.poll, 1.0)
-            
-            # No message received, continue polling
-            if msg is None:
-                continue
-
-            # Handle Kafka errors
-            if msg.error():
-                if msg.error().code() == KafkaError._PARTITION_EOF:
-                    logger.info(f"End of partition reached: {msg.error()}")
-                elif msg.error().code() == KafkaError._THROTTLING:
-                    logger.warning(f"Kafka throttle event: {msg.error()}")
-                else:
-                    logger.error(f"Kafka error: {msg.error()}", exc_info=True)
-                continue
-
-            # We've not reached the batch threshold, process the message.
-            value = msg.value()
-
-            # Remove the first 5 bytes (weird bytes that are prepended to the message)
-            value = value[5:]
-            
-            # Deserialize the Avro encoded exaBGP message
-            parsed = fastavro.schemaless_reader(BytesIO(value), avro_schema)
-
-            # Check if the message is significantly behind the current time
-            status['timestamp'] = datetime.fromtimestamp(parsed['timestamp'] / 1000)
-            status['time_lag'] = datetime.now() - status['timestamp']
-
-            # Convert to BMP messages
-            messages = exabgp_to_bmp(json.loads(parsed['ris_live']))
-
-            # Send each BMP message individually over the persistent TCP connection
-            for message in messages:
-                # Send the message over the persistent TCP connection
-                writer.write(message)
-                await writer.drain()
-
-                # Increment offset (Use 64 bytes for storage)
-                # This is super important to do atomically, otherwise we might lose messages
-                # Please don't change this without fully understanding the consequences!
-                offset += 1
-                db.set(b'offset', offset.to_bytes(64, byteorder='big'))
-
-                # Update the bytes sent counter
-                status['bytes_sent'] += len(message)
-
+        # Start tasks independently for maximum throughput
+        await asyncio.gather(consumer_coro, sender_coro, logging_task)
     except Exception as e:
         logger.error("Fatal error", exc_info=True)
     finally:
