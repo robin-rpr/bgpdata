@@ -1,3 +1,20 @@
+"""
+BGPDATA - BGP Data Collection and Analytics Service
+
+This software is part of the BGPDATA project, which is designed to collect, process, and analyze BGP data from various sources.
+It helps researchers and network operators get insights into their network by providing a scalable and reliable way to analyze and inspect historical and live BGP data from RIPE NCC RIS.
+
+Author: Robin Röper
+
+© 2024 BGPDATA. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+1. Redistributions of source code must retain the above copyright notice, this list of conditions, and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions, and the following disclaimer in the documentation and/or other materials provided with the distribution.
+3. Neither the name of BGPDATA nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+"""
 from confluent_kafka import KafkaError, Consumer
 from datetime import datetime, timedelta
 from protocols.bmp import BMPv3
@@ -302,7 +319,7 @@ def on_assign(consumer, partitions, offset):
 
 async def log_status(status):
     """
-    Periodically logs the most recent timestamp, time lag, current sending rate, and consumption rate.
+    Periodically logs the most recent timestamp, time lag, current poll interval, and consumption rate.
     This coroutine runs concurrently with the main processing loop.
     
     Args:
@@ -310,7 +327,6 @@ async def log_status(status):
             - timestamp (datetime): The most recent timestamp of the messages.
             - time_lag (timedelta): The current time lag of the messages.
             - bytes_sent_since_last_log (int): The number of bytes sent since the last log.
-            - current_rate (float): The current sending rate in messages per second.
     """
     while True:
         seconds = 5
@@ -322,7 +338,6 @@ async def log_status(status):
 
         logger.info(f"At time: {status['timestamp']}, "
                     f"Time lag: {status['time_lag'].total_seconds()} seconds, "
-                    f"Current rate: {status['current_rate']:.2f} messages/s, "
                     f"Transmitting at ~{kbps_counter:.2f} kbit/s")
 
         # Reset bytes_sent_since_last_log
@@ -334,13 +349,13 @@ async def main():
 
     This asynchronous function sets up a Kafka consumer, subscribes to the specified topic,
     and continuously polls for messages. It processes messages in batches, dynamically
-    adjusts sending rate based on the observed drain times, and handles various error scenarios.
+    adjusts polling intervals based on message lag, and handles various error scenarios.
 
     The function performs the following key operations:
     1. Sets up RocksDB and a Kafka consumer with specified configuration and callbacks.
     2. Establishes a persistent TCP connection to the OpenBMP collector.
     3. May perform initial catchup by Route Injecting MRT records from RIS Raw Data Dumps.
-    4. Dynamically adjusts sending rate based on the time taken by writer.drain().
+    4. Dynamically adjusts RIS Live Kafka polling intervals based on message time lag.
     5. Processes messages, including deserialization to exaBGP JSON and translation to BMPv3 (RFC7854).
     6. Sends processed BMP messages over TCP to the OpenBMP collector and updates the offset in RocksDB.
     7. Handles various error scenarios and implements retry logic.
@@ -401,24 +416,14 @@ async def main():
 
     # Initialize settings
     BATCH_THRESHOLD = 40000                   # Number of messages to process before sending batch
+    MESSAGES_PER_SECOND = 20000               # Messages per second (increase if needed)
 
     # Initialize batch variables
     batch_messages = []
     batch_messages_count = 0
 
-    # Dynamic rate control variables
-    initial_rate = 1000.0                     # Starting messages per second
-    min_rate = 100.0                          # Minimum messages per second
-    max_rate = 50000.0                        # Maximum messages per second
-    increase_step = 100.0                     # Rate increase step (additive)
-    decrease_factor = 0.5                     # Rate decrease factor (multiplicative)
-    DRAIN_TIME_THRESHOLD = 0.1                # Threshold for drain time in seconds
-    N = 10                                    # Number of drain times to keep
-    M = 10                                    # Adjust rate every M messages
-
-    # Initialize rate control variables
-    current_rate = initial_rate
-    drain_times_list = []
+    # Rate limiting variables
+    last_send_time = time.time()
     messages_sent = 0
 
     # Initialize status dictionary to share variables between main and log_status
@@ -426,7 +431,6 @@ async def main():
         'timestamp': datetime.now(),           # Initialize timestamp
         'time_lag': timedelta(0),              # Initialize time lag
         'bytes_sent_since_last_log': 0,        # Initialize bytes sent counter
-        'current_rate': current_rate,          # Current sending rate
     }
 
     # Start logging task that is updated within the loop
@@ -477,15 +481,7 @@ async def main():
                 for message in batch_messages:
                     # Send the message over the persistent TCP connection
                     writer.write(message)
-
-                    start_time = time.time()
                     await writer.drain()
-                    drain_time = time.time() - start_time
-
-                    # Update drain times list
-                    drain_times_list.append(drain_time)
-                    if len(drain_times_list) > N:
-                        drain_times_list.pop(0)
 
                     # Increment offset (Use 64 bytes for storage)
                     # This is super important to do atomically, otherwise we might lose messages
@@ -497,28 +493,16 @@ async def main():
                     status['bytes_sent_since_last_log'] += len(message)
                     messages_sent += 1
 
-                    # Adjust sending rate every M messages
-                    if messages_sent % M == 0:
-                        average_drain_time = sum(drain_times_list) / len(drain_times_list)
-                        if average_drain_time > DRAIN_TIME_THRESHOLD:
-                            # Decrease current_rate multiplicatively
-                            current_rate = max(min_rate, current_rate * decrease_factor)
-                            logger.debug(f"Drain time {average_drain_time:.4f}s exceeded threshold; decreasing rate to {current_rate:.2f} msgs/s")
-                        else:
-                            # Increase current_rate additively
-                            current_rate = min(max_rate, current_rate + increase_step)
-                            logger.debug(f"Drain time {average_drain_time:.4f}s below threshold; increasing rate to {current_rate:.2f} msgs/s")
-                        # Update status
-                        status['current_rate'] = current_rate
-
-                    # Calculate inter-message delay
-                    inter_message_delay = max(0, (1.0 / current_rate) - drain_time)
-                    if inter_message_delay > 0:
-                        await asyncio.sleep(inter_message_delay)
-
-                # Clear batch
-                batch_messages.clear()
-                batch_messages_count = 0
+                    # Check if rate limit is exceeded
+                    if messages_sent >= MESSAGES_PER_SECOND:
+                        # Sleep for the remainder of the second
+                        current_time = time.time()
+                        elapsed_time = current_time - last_send_time
+                        sleep_time = 1.0 - elapsed_time
+                        if sleep_time > 0:
+                            await asyncio.sleep(sleep_time)
+                        messages_sent = 0
+                        last_send_time = time.time()
 
     except Exception as e:
         logger.error("Fatal error", exc_info=True)
@@ -527,7 +511,7 @@ async def main():
         db.close()
 
         # Stop the consumer
-        consumer.close()
+        await consumer.stop()
 
         # Close the writer
         writer.close()
