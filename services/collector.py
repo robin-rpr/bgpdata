@@ -523,9 +523,6 @@ async def main():
         # Close the RocksDB database
         db.close()
 
-        # Stop the consumer
-        consumer.stop()
-
         # Close the writer
         writer.close()
         await writer.wait_closed()
