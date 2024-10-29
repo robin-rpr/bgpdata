@@ -317,7 +317,7 @@ def on_assign(consumer, partitions, offset):
     except Exception as e:
         logger.error(f"Error handling assignment: {e}", exc_info=True)
 
-async def log_status(status):
+async def log_status(status, queue):
     """
     Periodically logs the most recent timestamp, time lag, current poll interval, and consumption rate.
     This coroutine runs concurrently with the main processing loop.
@@ -327,6 +327,7 @@ async def log_status(status):
             - timestamp (datetime): The most recent timestamp of the messages.
             - time_lag (timedelta): The current time lag of the messages.
             - bytes_sent (int): The number of bytes sent since the last log.
+        queue (asyncio.Queue): The queue containing the messages to send.
     """
     while True:
         seconds = 5
@@ -338,57 +339,56 @@ async def log_status(status):
 
         logger.info(f"At time: {status['timestamp']}, "
                     f"Time lag: ~{status['time_lag'].total_seconds()} seconds, "
-                    f"Transmitting at ~{kbps_counter:.2f} kbit/s")
+                    f"Transmitting at ~{kbps_counter:.2f} kbit/s, "
+                    f"Queue size: {queue.qsize()}")
 
         # Reset bytes_sent
         status['bytes_sent'] = 0
 
-async def consumer_task(consumer, queue, status):
+async def consumer_task(consumer, queue, status, batch_size):
     """
-    Task to poll messages from Kafka and add them to the queue.
+    Task to poll a batch of messages from Kafka and add them to the queue.
 
     Args:
         consumer (confluent_kafka.Consumer): The Kafka consumer instance.
         queue (asyncio.Queue): The queue to add the messages to.
         status (dict): The status dictionary to update the time lag.
+        batch_size (int): Number of messages to fetch at once.
     """
     loop = asyncio.get_running_loop()
     
     while True:
-        # Poll for messages
-        msg = await loop.run_in_executor(None, consumer.poll, 1.0)
+        # Poll a batch of messages
+        msgs = await loop.run_in_executor(None, consumer.consume, batch_size, 0.1)
         
-        if msg is None:
+        if not msgs:
             continue
 
-        # Handle Kafka errors
-        if msg.error():
-            if msg.error().code() == KafkaError._PARTITION_EOF:
-                logger.info(f"End of partition reached: {msg.error()}")
-            elif msg.error().code() == KafkaError._THROTTLING:
-                logger.warning(f"Kafka throttle event: {msg.error()}")
-            else:
-                logger.error(f"Kafka error: {msg.error()}", exc_info=True)
-            continue
+        for msg in msgs:
+            if msg.error():
+                if msg.error().code() == KafkaError._PARTITION_EOF:
+                    logger.info(f"End of partition reached: {msg.error()}")
+                elif msg.error().code() == KafkaError._THROTTLING:
+                    logger.warning(f"Kafka throttle event: {msg.error()}")
+                else:
+                    logger.error(f"Kafka error: {msg.error()}", exc_info=True)
+                continue
 
-        # Process the message
-        value = msg.value()
+            # Process the message
+            value = msg.value()
+            value = value[5:]  # Remove the first 5 bytes if necessary
 
-        # Remove the first 5 bytes (weird bytes that are prepended to the message)
-        value = value[5:]
+            # Parse the Avro encoded exaBGP message
+            parsed = fastavro.schemaless_reader(BytesIO(value), avro_schema)
 
-        # Parse the Avro encoded exaBGP message
-        parsed = fastavro.schemaless_reader(BytesIO(value), avro_schema)
+            # Update the timestamp and time lag
+            status['timestamp'] = datetime.fromtimestamp(parsed['timestamp'] / 1000)
+            status['time_lag'] = datetime.now() - status['timestamp']
 
-        # Update the timestamp and time lag
-        status['timestamp'] = datetime.fromtimestamp(parsed['timestamp'] / 1000)
-        status['time_lag'] = datetime.now() - status['timestamp']
-
-        # Parse to BMP messages and add to the queue
-        messages = exabgp_to_bmp(json.loads(parsed['ris_live']))
-        for message in messages:
-            await queue.put((message, msg.offset()))
-
+            # Parse to BMP messages and add to the queue
+            messages = exabgp_to_bmp(json.loads(parsed['ris_live']))
+            for message in messages:
+                await queue.put((message, msg.offset()))
 
 async def sender_task(queue, writer, db, status):
     """
@@ -440,6 +440,9 @@ async def main():
     The function runs indefinitely until interrupted or an unhandled exception occurs.
     This script will be able to recover gracefully through the use of RocksDB.
     """
+
+    QUEUE_SIZE = 100000 # Number of messages to queue to the OpenBMP collector
+    BATCH_SIZE = 1000   # Number of messages to fetch at once from Kafka
 
     # Wait for 10 seconds before starting (prevents possible self-inflicted dos attack)
     await asyncio.sleep(10)
@@ -502,13 +505,13 @@ async def main():
     }
 
     # Define queue with a limit
-    queue = asyncio.Queue(maxsize=100000)      # Define queue with a limit
+    queue = asyncio.Queue(maxsize=QUEUE_SIZE)  # Define queue with a limit
 
     # Start logging task that is updated within the loop
-    logging_task = asyncio.create_task(log_status(status))
+    logging_task = asyncio.create_task(log_status(status, queue))
 
     # Start consumer task that is queueing messages
-    consumer_coro = consumer_task(consumer, queue, status)
+    consumer_coro = consumer_task(consumer, queue, status, BATCH_SIZE)
     sender_coro = sender_task(queue, writer, db, status)
 
     try:
