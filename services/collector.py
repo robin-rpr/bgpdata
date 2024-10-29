@@ -340,7 +340,7 @@ async def log_status(status, queue):
         logger.info(f"At time: {status['timestamp']}, "
                     f"Time lag: ~{status['time_lag'].total_seconds()} seconds, "
                     f"Transmitting at ~{kbps_counter:.2f} kbit/s, "
-                    f"Queue size: {queue.qsize()}")
+                    f"Queue size: ~{queue.qsize()}")
 
         # Reset bytes_sent
         status['bytes_sent'] = 0
@@ -416,8 +416,8 @@ async def sender_task(queue, writer, db, status):
 
         except Exception as e:
             logger.error("Error sending message over TCP", exc_info=True)
-            # On failure, re-queue the message
-            await queue.put((message, offset))
+            # On failure, exit forcefully
+            sys.exit(1)
 
 
 async def main():
@@ -441,8 +441,8 @@ async def main():
     This script will be able to recover gracefully through the use of RocksDB.
     """
 
-    QUEUE_SIZE = 100000 # Number of messages to queue to the OpenBMP collector
-    BATCH_SIZE = 1000   # Number of messages to fetch at once from Kafka
+    QUEUE_SIZE = 1000000 # Number of messages to queue to the OpenBMP collector
+    BATCH_SIZE = 10000   # Number of messages to fetch at once from Kafka
 
     # Wait for 10 seconds before starting (prevents possible self-inflicted dos attack)
     await asyncio.sleep(10)
