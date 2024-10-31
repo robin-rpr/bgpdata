@@ -20,11 +20,11 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from protocols.bmp import BMPv3
 from bs4 import BeautifulSoup
-from typing import List
 import queue as queueio
 from io import BytesIO
 import threading
 import rocksdbpy
+import tempfile
 import fastavro
 import requests
 import logging
@@ -34,7 +34,6 @@ import socket
 import struct
 import time
 import json
-import sys
 import os
 
 # Get the hostname and process ID
@@ -289,11 +288,19 @@ def rib_task(queue, status, timestamps, collectors, provider, events):
 
             while True:
                 try:
-                    parser = bgpkit.Parser(url=url)
+                    # Create a temporary directory
+                    temp_dir = tempfile.TemporaryDirectory()
+
+                    # Parse the RIB Data Dump via BGPKit
+                    # Learn more at https://bgpkit.com/
+                    parser = bgpkit.Parser(url=url, cache_dir=temp_dir)
+
                     for elem in parser:
+                        # Update the timestamp if it's the freshest
                         if elem['timestamp'] > timestamps[host]:
                             timestamps[host] = elem['timestamp']
 
+                        # Construct the BMP message
                         messages = BMPv3.construct(
                             host,
                             elem['peer_ip'],
@@ -307,6 +314,7 @@ def rib_task(queue, status, timestamps, collectors, provider, events):
                             ],
                             elem['origin'],
                             [
+                                # Only include compliant communities with 2 or 3 parts that are all valid integers
                                 [int(part) for part in comm.split(":")[1:] if part.isdigit()]
                                 for comm in (elem.get("communities") or [])
                                 if len(comm.split(":")) in {2, 3} and all(p.isdigit() for p in comm.split(":")[1:])
@@ -321,6 +329,8 @@ def rib_task(queue, status, timestamps, collectors, provider, events):
                             None,
                             0
                         )
+
+                        # Add the messages to the batch
                         batch.extend(messages)
                     
                     break  # Exit retry loop when successful
@@ -329,6 +339,7 @@ def rib_task(queue, status, timestamps, collectors, provider, events):
                     logger.warning(f"Retrieving RIB from {provider} {host} via {url} failed, retrying...", exc_info=True)
                     time.sleep(10)  # Wait 10 seconds before retrying
 
+            # Add the messages to the queue
             for message in batch:
                 queue.put((message, 0, provider, host))
 
@@ -512,10 +523,10 @@ async def main():
     This script will be able to recover gracefully through the use of RocksDB.
     """
 
-    QUEUE_SIZE = 10000000 # Number of messages to queue to the OpenBMP collector (1M is ~4GB Memory)
+    QUEUE_SIZE = 10000000 # Number of messages to queue to the OpenBMP collector
     BATCH_SIZE = 10000    # Number of messages to fetch at once from Kafka
 
-    # Wait for 10 seconds before starting (prevents possible self-inflicted dos attack)
+    # Wait for 10 seconds before starting (avoids self-inflicted dos attacks)
     time.sleep(10)
 
     # Get the running loop
