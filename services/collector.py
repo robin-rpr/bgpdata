@@ -363,14 +363,12 @@ async def kafka_task(consumer, topics, queue, db, status, batch_size, provider, 
 
             # Process the message
             value = msg.value()
+            collector = msg.topic()
 
             match provider:
                 case 'route-views':
                     # Skip the raw binary header (we don't need the fields)
                     value = value[76 + struct.unpack("!H", value[54:56])[0] + struct.unpack("!H", value[72:74])[0]:]
-
-                    # Extract the collector name from the topic
-                    collector = msg.topic()
 
                     # TODO: Parse the message and replace the peer_distinguisher with our own hash representation
                     #       Of the Route Views Collector name (SHA256) through the BMPv3.construct() function.
@@ -381,9 +379,6 @@ async def kafka_task(consumer, topics, queue, db, status, batch_size, provider, 
                     # Remove the first 5 bytes (we don't need them)
                     value = value[5:]
 
-                    # Extract the collector name from the topic
-                    collector = parsed['host']
-
                     # Parse the Avro encoded exaBGP message
                     parsed = fastavro.schemaless_reader(BytesIO(value), ris_avro_schema)
                     timestamp = parsed['timestamp'] / 1000  # Cast from int to datetime float
@@ -391,7 +386,7 @@ async def kafka_task(consumer, topics, queue, db, status, batch_size, provider, 
                     # Parse to BMP messages and add to the queue
                     marshal = json.loads(parsed['ris_live'])
                     messages = BMPv3.construct(
-                        collector,
+                        parsed['host'],
                         marshal['peer'],
                         marshal['peer_asn'],
                         marshal['timestamp'] / 1000, # Cast from int to datetime float
