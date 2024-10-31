@@ -206,7 +206,7 @@ def on_assign(consumer, partitions, db):
 
             # Set the offset for each partition
             for partition in partitions:
-                partition.offset = int.from_bytes(db.get(f'{consumer.topic()}'.encode('utf-8')) or b'\x00', byteorder='big')
+                partition.offset = int.from_bytes(db.get(f'{consumer.topic()}_{partition.partition}'.encode('utf-8')) or b'\x00', byteorder='big')
                 logger.info(f"Setting offset for partition {partition.partition} of {consumer.topic()} to {partition.offset}")
             
             # Assign the partitions to the consumer
@@ -397,6 +397,10 @@ def kafka_task(consumer, timestamps, topics, queue, db, status, batch_size, prov
             # Process the message
             value = msg.value()
             topic = msg.topic()
+            partition = msg.partition()
+
+            # Initialize the messages list
+            messages = []
 
             match provider:
                 case 'route-views':
@@ -435,7 +439,7 @@ def kafka_task(consumer, timestamps, topics, queue, db, status, batch_size, prov
 
                     # Parse to BMP messages and add to the queue
                     marshal = json.loads(parsed['ris_live'])
-                    messages = BMPv3.construct(
+                    messages.extend(BMPv3.construct(
                         host,
                         marshal['peer'],
                         marshal['peer_asn'],
@@ -448,13 +452,13 @@ def kafka_task(consumer, timestamps, topics, queue, db, status, batch_size, prov
                         marshal['withdrawals'],
                         marshal['state'],
                         marshal['med']
-                    )
+                    ))
                 
             # Update the approximated time lag preceived by the consumer
             status['time_lag'] = datetime.now() - datetime.fromtimestamp(timestamp)
 
             for message in messages:
-                queue.put((message, msg.offset(), provider, topic))
+                queue.put((message, msg.offset(), provider, topic, partition))
 
 def sender_task(queue, host, port, db, status):
     """
@@ -475,13 +479,13 @@ def sender_task(queue, host, port, db, status):
 
             while True:
                 try:
-                    message, offset, provider, topic = queue.get()
+                    message, offset, provider, topic, partition = queue.get()
                     sock.sendall(message)
                     status['bytes_sent'] += len(message)
 
                     # Save offset to RocksDB
                     db.set(
-                        f'{provider}_{topic}'.encode('utf-8'),
+                        f'{provider}_{topic}_{partition}'.encode('utf-8'),
                         offset.to_bytes(16, byteorder='big')
                     )
 
@@ -552,6 +556,10 @@ async def main():
 
     # Create OpenBMP Socket with retry until timeout
     collectors = [tuple(collector.split(':')) for collector in os.getenv('OPENBMP_COLLECTORS').split(',')]
+
+    # Verify that the OPENBMP_COLLECTORS environment variable is set
+    if collectors is None:
+        raise Exception("OPENBMP_COLLECTORS environment variable is not set, exiting...")
 
     # Create a ThreadPoolExecutor for sender tasks
     executor = ThreadPoolExecutor(max_workers=4+len(collectors))
