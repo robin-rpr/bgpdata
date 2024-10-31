@@ -229,8 +229,8 @@ async def logging_task(status, queue):
         queue (queueio.Queue): The queue containing the messages to send.
     """
     while True:
-        seconds = 5
-        await asyncio.sleep(seconds)  # Sleep for 5 seconds before logging
+        seconds = 10
+        await asyncio.sleep(seconds)  # Sleep for n seconds before logging
 
         # Compute kbps_counter
         bytes_sent = status['bytes_sent']
@@ -512,8 +512,8 @@ async def main():
     This script will be able to recover gracefully through the use of RocksDB.
     """
 
-    QUEUE_SIZE = 3000000 # Number of messages to queue to the OpenBMP collector (1M is ~4GB Memory)
-    BATCH_SIZE = 10000   # Number of messages to fetch at once from Kafka
+    QUEUE_SIZE = 10000000 # Number of messages to queue to the OpenBMP collector (1M is ~4GB Memory)
+    BATCH_SIZE = 10000    # Number of messages to fetch at once from Kafka
 
     # Wait for 10 seconds before starting (prevents possible self-inflicted dos attack)
     time.sleep(10)
