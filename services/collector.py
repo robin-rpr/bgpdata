@@ -634,6 +634,9 @@ async def main():
     finally:
         # Close the RocksDB database
         db.close()
+
+        # Shutdown the ThreadPoolExecutor
+        executor.shutdown()
         
         # Cancel the logging task when exiting
         logging_task.cancel()
