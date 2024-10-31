@@ -252,13 +252,15 @@ async def log_status(status, queue):
         # Reset bytes_sent
         status['bytes_sent'] = 0
 
-async def rib_task(queue, status, collectors, provider, events):
+async def rib_task(queue, status, timestamps, collectors, provider, events):
     """
     Task to inject RIB messages from MRT Data Dumps into the queue.
 
     Args:
         queue (asyncio.Queue): The queue to add the messages to.
         status (dict): The status dictionary to update the time lag.
+        timestamps (dict): A dictionary containing the latest timestamps of the RIBs.
+        collectors (list): A list of tuples containing the host and URL of the RIB Data Dumps.
         provider (str): The provider of the MRT Data Dumps.
         events (dict): A dictionary containing the following keys:
             - route-views (asyncio.Event): The event to wait for before starting.
@@ -267,13 +269,25 @@ async def rib_task(queue, status, collectors, provider, events):
 
     status['activity'] = "RIB_INJECTION"
 
-    logger.info(f"Starting RIB Injection from {provider} collectors...")
+    logger.info(f"Beginning RIB Injection from {provider} collectors")
     
     try:
         # Perform RIB Injection from each collector
         for host, url in collectors:
+            logger.info(f"Injecting RIB from {provider} {host} via {url}")
+
+            # Initialize timestamps[host] before using it
+            if host not in timestamps:
+                timestamps[host] = -1
+
+            # Parse the RIB Data Dump via BGPKit
+            # Learn more at https://bgpkit.com/
             parser = bgpkit.Parser(url=url)
             for elem in parser:
+                # Update the timestamp if it's the freshest
+                if elem['timestamp'] > timestamps[host]:
+                    timestamps[host] = elem['timestamp']
+
                 # Construct the BMP message
                 messages = BMPv3.construct(
                     host,
@@ -306,23 +320,27 @@ async def rib_task(queue, status, collectors, provider, events):
 
                 # Add the message to the queue
                 for message in messages:
-                    await queue.put((message, 0, 'ris', host))
+                    await queue.put((message, 0, provider, host))
 
     except Exception as e:
         logger.error(f"Error injecting RIB from {provider} collectors: {e}", exc_info=True)
+        logger.error(f"Serious data collection error with possible data corruption, exiting...")
         raise e
 
     # We are done, mark as ready
     events[provider].set()
 
 
-async def kafka_task(consumer, topics, queue, db, status, batch_size, provider, events):
+async def kafka_task(consumer, timestamps, topics, queue, db, status, batch_size, provider, events):
     """
     Task to poll a batch of messages from Kafka and add them to the queue.
 
     Args:
         consumer (confluent_kafka.Consumer): The Kafka consumer instance.
+        timestamps (dict): A dictionary containing the latest timestamps of the RIBs.
+        topics (list): A list of topics to subscribe to.
         queue (asyncio.Queue): The queue to add the messages to.
+        db (rocksdbpy.DB): The RocksDB database to store the offset.
         status (dict): The status dictionary to update the time lag.
         batch_size (int): Number of messages to fetch at once.
         provider (str): The provider of the messages.
@@ -336,7 +354,7 @@ async def kafka_task(consumer, topics, queue, db, status, batch_size, provider, 
 
     status['activity'] = "KAFKA_POLLING"
 
-    logger.info(f"Subscribing to {provider} Kafka Consumer...")
+    logger.info(f"Subscribing to {provider} Kafka Consumer")
 
     # Subscribe to Kafka Consumer
     consumer.subscribe(
@@ -371,8 +389,10 @@ async def kafka_task(consumer, topics, queue, db, status, batch_size, provider, 
                     # Skip the raw binary header (we don't need the fields)
                     value = value[76 + struct.unpack("!H", value[54:56])[0] + struct.unpack("!H", value[72:74])[0]:]
 
-                    # TODO: Parse the message and replace the peer_distinguisher with our own hash representation
-                    #       Of the Route Views Collector name (SHA256) through the BMPv3.construct() function (e.g. the host).
+                    # TODO (1): Skip messages before the ingested collector's RIB.
+
+                    # TODO (2): Parse the message and replace the peer_distinguisher with our own hash representation
+                    #           Of the Route Views Collector name (SHA256) through the BMPv3.construct() function (e.g. the host).
 
                     # Add the message
                     messages.append(value)
@@ -380,12 +400,24 @@ async def kafka_task(consumer, topics, queue, db, status, batch_size, provider, 
                     # Remove the first 5 bytes (we don't need them)
                     value = value[5:]
 
-                    # Extract Host
-                    host = parsed['host']
-
                     # Parse the Avro encoded exaBGP message
                     parsed = fastavro.schemaless_reader(BytesIO(value), ris_avro_schema)
                     timestamp = parsed['timestamp'] / 1000  # Cast from int to datetime float
+                    host = parsed['host'] # Extract Host
+
+                    # Check if the collector is known
+                    if host not in timestamps:
+                        raise Exception(f"Unknown collector {host}")
+                    
+                    # Check if the RIB injection for this collector is corrupted
+                    if timestamps[host] == -1:
+                        raise Exception(f"RIB injection for {host} is corrupted, no MRT records ingested")
+                    
+                    # Skip messages before the ingested collector's RIB or before the collector was seen
+                    if timestamp > timestamps[host]:
+                        # TODO: We are estimating the time gap between the message and the ingested RIB very statically,
+                        #       but we should approach this more accurately, e.g. approximate the time gap through reverse graph analysis.
+                        continue
 
                     # Parse to BMP messages and add to the queue
                     marshal = json.loads(parsed['ris_live'])
@@ -520,6 +552,9 @@ async def main():
         'activity': "CONNECTING",              # Initialize activity
     }
 
+    # Keep track of freshest timestamps of the RIBs
+    timestamps = {}
+
     # Start logging task that is updated within the loop
     logging_task = asyncio.create_task(log_status(status, queue))
 
@@ -538,14 +573,15 @@ async def main():
 
         for _, value in db.iterator():
             if value == b'\x00':
-                # RIB Injection failed
-                raise Exception("RIB Injection failed, please check your RocksDB database")
+                # RIB Injection failed, detected unexpected null offset
+                raise Exception("RIB Injection failed, data may be corrupted, exiting...")
             else:
+                logger.info(f"Found offset for {key.decode('utf-8')}: {value.hex()}")
                 initialized = True
 
         if initialized:
             # Everything is initialized
-            logger.info("Intact offset database, starting tasks...")
+            logger.info("Offset database is intact.")
             events['route-views'].set()
             events['ris'].set()
 
@@ -569,11 +605,11 @@ async def main():
         # Create tasks list starting with RIB and Kafka consumers
         tasks = [
             # RIB Consumers
-            rib_task(queue, status, list(zip([f"{i}.routeviews.org" for i in rv_collectors], rv_rib_urls)), 'route-views', events),
-            rib_task(queue, status, list(zip([f"{i}.ripe.net" for i in ris_collectors], [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', events),
+            rib_task(queue, status, timestamps, list(zip([f"{i}.routeviews.org" for i in rv_collectors], rv_rib_urls)), 'route-views', events),
+            rib_task(queue, status, timestamps, list(zip([f"{i}.ripe.net" for i in ris_collectors], [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', events),
             # Kafka Consumers
-            kafka_task(rv_consumer, [f'bmp.rv.routeviews.{i}' for i in rv_collectors], queue, db, status, BATCH_SIZE, 'route-views', events),
-            kafka_task(ris_consumer, ['ris-live'], queue, db, status, BATCH_SIZE, 'ris', events),
+            kafka_task(rv_consumer, timestamps, [f'bmp.rv.routeviews.{i}' for i in rv_collectors], queue, db, status, BATCH_SIZE, 'route-views', events),
+            kafka_task(ris_consumer, timestamps, ['ris-live'], queue, db, status, BATCH_SIZE, 'ris', events),
             # Logging
             logging_task
         ]

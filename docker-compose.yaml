@@ -83,6 +83,7 @@ services:
         container_name: core-collector
         restart: unless-stopped
         environment:
+            - POSTGRESQL_DATABASE=postgresql+asyncpg://core:core@core-db:5432/default
             - OPENBMP_COLLECTORS=openbmp-collector:5000
         depends_on:
             openbmp-collector:
