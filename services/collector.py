@@ -17,6 +17,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 """
 from confluent_kafka import KafkaError, Consumer
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
 from protocols.bmp import BMPv3
 from bs4 import BeautifulSoup
 from typing import List
@@ -561,6 +562,9 @@ async def main():
     # Create OpenBMP Socket with retry until timeout
     collectors = [tuple(collector.split(':')) for collector in os.getenv('OPENBMP_COLLECTORS').split(',')]
 
+    # Create a ThreadPoolExecutor for sender tasks
+    executor = ThreadPoolExecutor(max_workers=len(collectors))
+
     try:
         # Create readyness events
         events = {
@@ -614,9 +618,14 @@ async def main():
             logging_task
         ]
 
-        # Add a sender task for each collector
+        # Add a multithreaded sender task for each collector
         for host, port in collectors:
-            tasks.append(sender_task(queue, host, port, db, status))
+            tasks.append(
+                asyncio.to_thread(
+                    sender_task,
+                    queue, host, port, db, status
+                )
+            )
 
         # Start all tasks
         await asyncio.gather(*tasks)
