@@ -531,11 +531,19 @@ class BMPv3:
             # Process each segment in the AS_PATH
             segments = []
             current_segment = []
+            max_segment_length = 255  # Maximum length of a single AS_PATH segment in bytes
+
+            def encode_as_segment(segment_type, as_numbers):
+                """Helper function to encode an AS segment."""
+                segment_length = len(as_numbers)
+                segment_value = b''.join(struct.pack('!I', int(asn)) for asn in as_numbers)
+                return struct.pack('!BB', segment_type, segment_length) + segment_value
+
             for element in as_path:
                 if isinstance(element, list):
                     # AS_SET
                     if current_segment:
-                        # Flush previous AS_SEQUENCE segment
+                        # Flush current AS_SEQUENCE segment if present
                         segments.append((2, current_segment))
                         current_segment = []
                     segments.append((1, element))  # AS_SET
@@ -543,20 +551,28 @@ class BMPv3:
                     # AS_SEQUENCE
                     current_segment.append(element)
 
-            if current_segment:
-                segments.append((2, current_segment))  # AS_SEQUENCE
+                    # If the length of the current segment exceeds the byte limit, split it
+                    if len(current_segment) * 4 + 2 > max_segment_length:
+                        segments.append((2, current_segment[:max_segment_length // 4]))
+                        current_segment = current_segment[max_segment_length // 4:]
 
-            # Build the AS_PATH attribute
+            if current_segment:
+                segments.append((2, current_segment))  # Flush remaining AS_SEQUENCE
+
+            # Build the AS_PATH attribute with potential splitting
             for segment_type, as_numbers in segments:
-                segment_length = len(as_numbers)
-                segment_value = b''
-                for asn in as_numbers:
-                    segment_value += struct.pack('!I', int(asn))
-                as_path_value += struct.pack('!BB', segment_type, segment_length) + segment_value
+                segment_encoded = encode_as_segment(segment_type, as_numbers)
+                if len(segment_encoded) > max_segment_length:
+                    # Split if the segment exceeds the maximum length
+                    for i in range(0, len(as_numbers), max_segment_length // 4):
+                        sub_segment = as_numbers[i:i + max_segment_length // 4]
+                        as_path_value += encode_as_segment(segment_type, sub_segment)
+                else:
+                    as_path_value += segment_encoded
 
             attr_length = len(as_path_value)
             if attr_length > 255:
-                # Extended Length
+                # Use Extended Length if the overall length exceeds 255 bytes
                 attr_flags |= 0x10  # Set Extended Length flag
                 path_attributes += struct.pack('!BBH', attr_flags, attr_type, attr_length)
             else:
