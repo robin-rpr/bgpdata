@@ -18,10 +18,12 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 from confluent_kafka import KafkaError, Consumer
 from datetime import datetime, timedelta
 from protocols.bmp import BMPv3
+from bs4 import BeautifulSoup
 from typing import List
 from io import BytesIO
 import rocksdbpy
 import fastavro
+import requests
 import logging
 import asyncio
 import bgpkit
@@ -49,7 +51,7 @@ rv_collectors = [
     "pacwave.lax",           # Pacific Wave, Los Angeles, California
     "pit.scl",               # PIT Chile Santiago, Chile
     "pitmx.qro",             # PIT Chile MX, Querétaro, Mexico
-    "route-views",           # U of Oregon, Eugene, Oregon
+    # "route-views",         # U of Oregon, Eugene, Oregon (Only has Cisco's `show ip bgp` data, not relevant for us)
     "route-views.amsix",     # AMS-IX AM6, Amsterdam, Netherlands
     "route-views.bdix",      # BDIX, Dhaka, Bangladesh
     "route-views.bknix",     # BKNIX, Bangkok, Thailand
@@ -60,22 +62,22 @@ rv_collectors = [
     "route-views.fortaleza", # IX.br (PTT.br), Fortaleza, Brazil
     "route-views.gixa",      # GIXA, Ghana, Africa
     "route-views.gorex",     # GOREX, Guam, US Territories
-    "route-views.jinx",      # JINX, Johannesburg, South Africa (RETIRED)
+    # "route-views.jinx",    # JINX, Johannesburg, South Africa (RETIRED)
     "route-views.kixp",      # KIXP, Nairobi, Kenya
     "route-views.linx",      # LINX, London, United Kingdom
     "route-views.mwix",      # FD-IX, Indianapolis, Indiana
     "route-views.napafrica", # NAPAfrica, Johannesburg, South Africa
     "route-views.nwax",      # NWAX, Portland, Oregon
     "route-views.ny",        # DE-CIX NYC, New York, USA
-    "route-views.paix",      # PAIX, Palo Alto, California
+    "route-views.isc",       # PAIX (ISC), Palo Alto, California
     "route-views.perth",     # West Australian Internet Exchange, Perth, Australia
     "route-views.peru",      # Peru IX, Lima, Peru
     "route-views.phoix",     # University of the Philippines, Diliman, Quezon City, Philippines
     "route-views.rio",       # IX.br (PTT.br), Rio de Janeiro, Brazil
-    "route-views.saopaulo",  # SAOPAULO (PTT Metro, NIC.br), Sao Paulo, Brazil (RETIRED)
+    # "route-views.saopaulo",# SAOPAULO (PTT Metro, NIC.br), Sao Paulo, Brazil (RETIRED)
     "route-views2.saopaulo", # SAOPAULO (PTT Metro, NIC.br), Sao Paulo, Brazil
     "route-views.sfmix",     # San Francisco Metro IX, San Francisco, California
-    "route-views.siex",      # Southern Italy Exchange (SIEX), Rome, Italy (OFFLINE)
+    # "route-views.siex",    # Southern Italy Exchange (SIEX), Rome, Italy (OFFLINE)
     "route-views.sg",        # Equinix SG1, Singapore, Singapore
     "route-views.soxrs",     # Serbia Open Exchange, Belgrade, Serbia
     "route-views.sydney",    # Equinix SYD1, Sydney, Australia
@@ -250,64 +252,72 @@ async def log_status(status, queue):
         # Reset bytes_sent
         status['bytes_sent'] = 0
 
-async def rib_task(queue, status, ready):
+async def rib_task(queue, status, collectors, provider, ready):
     """
     Task to inject RIB messages from MRT Data Dumps into the queue.
 
     Args:
         queue (asyncio.Queue): The queue to add the messages to.
         status (dict): The status dictionary to update the time lag.
+        provider (str): The provider of the MRT Data Dumps.
         ready (asyncio.Event): The event to wait for before starting.
     """
 
     status['activity'] = "RIB_INJECTION"
+
+    logger.info(f"Starting RIB Injection from {provider} collectors...")
     
-    # RIS RIB Dumps
-    for rrc in ris_collectors:
-        parser = bgpkit.Parser(url=f"https://data.ris.ripe.net/{rrc}/latest-bview.gz")
-        for elem in parser:
-            # Construct the collector name
-            collector = f"{rrc}.ripe.net"
+    try:
+        # Perform RIB Injection from each collector
+        for host, url in collectors:
+            parser = bgpkit.Parser(url=url)
+            for elem in parser:
+                # Construct the collector name
+                collector = host
 
-            # Construct the BMP message
-            messages = BMPv3.construct(
-                collector,
-                elem['peer_ip'],
-                elem['peer_asn'],
-                elem['timestamp'],
-                "UPDATE",
-                [
-                    [int(asn) for asn in part[1:-1].split(',')] if part.startswith('{') and part.endswith('}')
-                    else int(part)
-                    for part in elem['as_path'].split()
-                ],
-                elem['origin'],
-                [
-                    # Only include compliant communities: either 2 or 3 parts when split by ":"
-                    [int(part) for part in comm.split(":")[1:]]
-                    for comm in (elem.get("communities") or [])
-                    if len(comm.split(":")) in {2, 3}  # Filter out non-compliant entries
-                ],
-                [
-                    {
-                        "next_hop": elem["next_hop"],
-                        "prefixes": [elem["prefix"]]
-                    }
-                ],
-                [],
-                None,
-                0
-            )
+                # Construct the BMP message
+                messages = BMPv3.construct(
+                    collector,
+                    elem['peer_ip'],
+                    elem['peer_asn'],
+                    elem['timestamp'],
+                    "UPDATE",
+                    [
+                        [int(asn) for asn in part[1:-1].split(',')] if part.startswith('{') and part.endswith('}')
+                        else int(part)
+                        for part in elem['as_path'].split()
+                    ],
+                    elem['origin'],
+                    [
+                        # Only include compliant communities with 2 or 3 parts that are all valid integers
+                        [int(part) for part in comm.split(":")[1:] if part.isdigit()]
+                        for comm in (elem.get("communities") or [])
+                        if len(comm.split(":")) in {2, 3} and all(p.isdigit() for p in comm.split(":")[1:])
+                    ],
+                    [
+                        {
+                            "next_hop": elem["next_hop"],
+                            "prefixes": [elem["prefix"]]
+                        }
+                    ],
+                    [],
+                    None,
+                    0
+                )
 
-            # Add the message to the queue
-            for message in messages:
-                await queue.put((message, 0, 'ris', collector))
+                # Add the message to the queue
+                for message in messages:
+                    await queue.put((message, 0, 'ris', collector))
 
-        # We are done, ready to start
-        ready.set()
+    except Exception as e:
+        logger.error(f"Error injecting RIB from {provider} collectors: {e}", exc_info=True)
+        raise e
+
+    # We are done, ready to start
+    ready.set()
 
 
-async def kafka_task(consumer, queue, status, batch_size, provider, ready):
+async def kafka_task(consumer, topics, queue, db, status, batch_size, provider, ready):
     """
     Task to poll a batch of messages from Kafka and add them to the queue.
 
@@ -324,6 +334,15 @@ async def kafka_task(consumer, queue, status, batch_size, provider, ready):
     await ready.wait()
 
     status['activity'] = "KAFKA_POLLING"
+
+    logger.info(f"Subscribing to {provider} Kafka Consumer...")
+
+    # Subscribe to Kafka Consumer
+    consumer.subscribe(
+        topics,
+        on_assign=lambda c, p: on_assign(c, p, db),
+        on_revoke=lambda c, p: logger.info(f"Revoked partitions: {[part.partition for part in p]}")
+    )
 
     loop = asyncio.get_running_loop()
     
@@ -416,14 +435,13 @@ async def sender_task(queue, writer, db, status):
             # Save offset to RocksDB
             db.set(
                 f'{provider}_{collector}'.encode('utf-8'),
-                offset.to_bytes(64, byteorder='big')
+                offset.to_bytes(16, byteorder='big')
             )
             queue.task_done()
 
         except Exception as e:
             logger.error("Error sending message over TCP", exc_info=True)
-            # On failure, exit forcefully (Better than risking corruption)
-            sys.exit(1)
+            raise e
 
 
 async def main():
@@ -481,20 +499,6 @@ async def main():
     host = os.getenv('OPENBMP_COLLECTOR_HOST')
     port = int(os.getenv('OPENBMP_COLLECTOR_PORT'))
 
-    # Subscribe to Route Views Kafka Consumer
-    rv_consumer.subscribe(
-        [f'bmp.rv.routeviews.{i}' for i in rv_collectors],
-        on_assign=lambda c, p: on_assign(c, p, db),
-        on_revoke=lambda c, p: logger.info(f"Revoked partitions: {[part.partition for part in p]}")
-    )
-
-    # Subscribe to RIS Live Kafka Consumer
-    ris_consumer.subscribe(
-        ['ris-live'],
-        on_assign=lambda c, p: on_assign(c, p, db),
-        on_revoke=lambda c, p: logger.info(f"Revoked partitions: {[part.partition for part in p]}")
-    )
-
     start_time = time.time()
     while True:
         try:
@@ -518,19 +522,49 @@ async def main():
     try:
         # Create iterator
         ready = asyncio.Event()
-        initialized = any(db.iterator())
+
+        # Verify database initialization
+        initialized = False
+
+        for _, value in db.iterator():
+            if value == b'\x00':
+                # RIB Injection failed
+                raise Exception("RIB Injection failed, please check your RocksDB database")
+            else:
+                initialized = True
 
         if initialized:
+            # Everything is initialized
+            logger.info("Intact offset database, starting tasks...")
             ready.set()
+
+        # HACK: For Route Views, we need to manually fetch the latest RIBs
+        rv_rib_urls = []
+        for i in rv_collectors:
+            if i == "route-views2":
+                # Route Views 2 is hosted on the root folder
+                index = f"https://archive.routeviews.org/bgpdata/{datetime.now().year}.{datetime.now().month}/RIBS/"
+            else:
+                # Construct the URL for the latest RIBs
+                index = f"https://archive.routeviews.org/{i}/bgpdata/{datetime.now().year}.{datetime.now().month}/RIBS/"
+
+            # Crawl the index page to find the latest RIB file (with beautifulsoup its also a apache file server)
+            response = requests.get(index, timeout=30)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            latest_rib = soup.find_all('a')[-1].text
+            rv_rib_urls.append(f"{index}{latest_rib}")
 
         # Start tasks independently for maximum throughput
         await asyncio.gather(
-            # RIB Consumer
-            rib_task(queue, status, ready),
+            # Route Views RIB Consumer
+            rib_task(queue, status, list(zip([f"{i}.routeviews.org" for i in rv_collectors], rv_rib_urls)), 'route-views', ready),
+            # RIS RIB Consumer
+            rib_task(queue, status, list(zip([f"{i}.ripe.net" for i in ris_collectors], [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', ready),
             # Route Views Kafka Consumer
-            kafka_task(rv_consumer, queue, status, BATCH_SIZE, 'route-views', ready),
+            kafka_task(rv_consumer, [f'bmp.rv.routeviews.{i}' for i in rv_collectors], queue, db, status, BATCH_SIZE, 'route-views', ready),
             # RIS Kafka Consumer
-            kafka_task(ris_consumer, queue, status, BATCH_SIZE, 'ris', ready),
+            kafka_task(ris_consumer, ['ris-live'], queue, db, status, BATCH_SIZE, 'ris', ready),
             # Sender
             sender_task(queue, writer, db, status),
             # Logging
