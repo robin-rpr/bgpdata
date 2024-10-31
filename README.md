@@ -7,12 +7,12 @@
 
 [https://bgp-data.net](https://bgp-data.net/?ref=github) — BGP Data Collection and Analytics Service
 
-BGPDATA helps researchers and network operators gain insights into their networks by providing a scalable and reliable way to analyze and inspect historical and live BGP data from [RIPE NCC RIS](https://ris.ripe.net/).
+BGPDATA helps researchers and network operators gain insights into their networks by providing a scalable and reliable way to analyze and inspect historical and live BGP data from [Route Views](https://www.routeviews.org/) and [RIPE NCC RIS](https://ris.ripe.net/).
 
-Additionally, this project provides tools and an experimental platform to study how RIS data can be aggregated on [RIPEstat](https://stat.ripe.net/), reconciling historical and live data for research and analysis.
+Additionally, this project provides tools and an experimental platform to study how RIS data could be aggregated on [RIPEstat](https://stat.ripe.net/), reconciling historical and live data for research and analysis on the global internet.
 
 ## Data Flow
-We collect both historical and live BGP data from RIPE NCC RIS to provide comprehensive insights. 
+We collect both historical and live BGP data from [Route Views](https://www.routeviews.org/) and [RIPE NCC RIS](https://ris.ripe.net/) collectors to provide comprehensive insights. 
 
 <img title="Data Flow" src="static/images/dataflow.png" height="450" />
 
@@ -60,7 +60,7 @@ This command will:
 1. Build the Docker image for the various services.
 2. Start the services and initialize the Databases.
 3. Serve a user interface at [`http://localhost:8080`](http://localhost:8080)
-4. And begin the data collection process from [RIPE NCC RIS](https://ris.ripe.net/) Live.
+4. And begin the data collection process from [Route Views](https://www.routeviews.org/) and [RIPE NCC RIS](https://ris.ripe.net/) collectors.
 
 ### Accessing the Application
 
@@ -70,7 +70,8 @@ As well as a Grafana dashboard at [`http://localhost:3000`](http://localhost:300
 
 # ACKs
 
--   [RIS](https://ris.ripe.net/) for providing the BGP data and collector infrastructure
+-   [RIS](https://ris.ripe.net/) for providing the data and collector infrastructure
+-   [Route Views](https://www.routeviews.org/) for providing the data and collector infrastructure
 -   [RIPE NCC](https://www.ripe.net/) for providing the RIS Live Kafka infrastructure
 -   [OpenBMP](https://www.openbmp.org/) for providing the invaluable OpenBMP Suite used in-depth in this project
 -   [Tim Evens](https://github.com/TimEvens) for his leading role in the development of the OpenBMP Suite
