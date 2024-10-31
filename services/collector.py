@@ -20,11 +20,13 @@ from datetime import datetime, timedelta
 from protocols.bmp import BMPv3
 from typing import List
 from io import BytesIO
-import fastavro
 import rocksdbpy
+import fastavro
 import logging
 import asyncio
+import bgpkit
 import socket
+import struct
 import time
 import json
 import sys
@@ -37,50 +39,119 @@ hostname = socket.gethostname()  # Get the machine's hostname
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# List of RRCs with locations
-# https://ris.ripe.net/docs/route-collectors/
-rrcs = [
-    "RRC00",  # Amsterdam, NL - multihop, global
-    "RRC01",  # London, GB - IXP, LINX, LONAP
-    # "RRC02",  # Paris, FR - IXP, SFINX (Historic)
-    "RRC03",  # Amsterdam, NL - IXP, AMS-IX, NL-IX
-    "RRC04",  # Geneva, CH - IXP, CIXP
-    "RRC05",  # Vienna, AT - IXP, VIX
-    "RRC06",  # Otemachi, JP - IXP, DIX-IE, JPIX
-    "RRC07",  # Stockholm, SE - IXP, Netnod
-    # "RRC08",  # San Jose, CA, US - IXP, MAE-WEST (Historic)
-    # "RRC09",  # Zurich, CH - IXP, TIX (Historic)
-    "RRC10",  # Milan, IT - IXP, MIX
-    "RRC11",  # New York, NY, US - IXP, NYIIX
-    "RRC12",  # Frankfurt, DE - IXP, DE-CIX
-    "RRC13",  # Moscow, RU - IXP, MSK-IX
-    "RRC14",  # Palo Alto, CA, US - IXP, PAIX
-    "RRC15",  # Sao Paolo, BR - IXP, PTTMetro-SP
-    "RRC16",  # Miami, FL, US - IXP, Equinix Miami
-    "RRC18",  # Barcelona, ES - IXP, CATNIX
-    "RRC19",  # Johannesburg, ZA - IXP, NAP Africa JB
-    "RRC20",  # Zurich, CH - IXP, SwissIX
-    "RRC21",  # Paris, FR - IXP, France-IX Paris and Marseille
-    "RRC22",  # Bucharest, RO - IXP, Interlan
-    "RRC23",  # Singapore, SG - IXP, Equinix Singapore
-    "RRC24",  # Montevideo, UY - multihop, LACNIC region
-    "RRC25",  # Amsterdam, NL - multihop, global
-    "RRC26",  # Dubai, AE - IXP, UAE-IX"
+# List of Route Views collectors with locations
+# https://www.routeviews.org/
+rv_collectors = [
+    "amsix.ams",             # AMS-IX Amsterdam, Netherlands
+    "cix.atl",               # CIX-ATL Atlanta, Georgia
+    "decix.jhb",             # DE-CIX KUL, Johor Bahru, Malaysia
+    "iraq-ixp.bgw",          # IRAQ-IXP Baghdad, Iraq
+    "pacwave.lax",           # Pacific Wave, Los Angeles, California
+    "pit.scl",               # PIT Chile Santiago, Chile
+    "pitmx.qro",             # PIT Chile MX, Querétaro, Mexico
+    "route-views",           # U of Oregon, Eugene, Oregon
+    "route-views.amsix",     # AMS-IX AM6, Amsterdam, Netherlands
+    "route-views.bdix",      # BDIX, Dhaka, Bangladesh
+    "route-views.bknix",     # BKNIX, Bangkok, Thailand
+    "route-views.chicago",   # Equinix CH1, Chicago, Illinois
+    "route-views.chile",     # NIC.cl Santiago, Chile
+    "route-views.eqix",      # Equinix DC, Ashburn, Virginia
+    "route-views.flix",      # FL-IX, Miami, Florida
+    "route-views.fortaleza", # IX.br (PTT.br), Fortaleza, Brazil
+    "route-views.gixa",      # GIXA, Ghana, Africa
+    "route-views.gorex",     # GOREX, Guam, US Territories
+    "route-views.jinx",      # JINX, Johannesburg, South Africa (RETIRED)
+    "route-views.kixp",      # KIXP, Nairobi, Kenya
+    "route-views.linx",      # LINX, London, United Kingdom
+    "route-views.mwix",      # FD-IX, Indianapolis, Indiana
+    "route-views.napafrica", # NAPAfrica, Johannesburg, South Africa
+    "route-views.nwax",      # NWAX, Portland, Oregon
+    "route-views.ny",        # DE-CIX NYC, New York, USA
+    "route-views.paix",      # PAIX, Palo Alto, California
+    "route-views.perth",     # West Australian Internet Exchange, Perth, Australia
+    "route-views.peru",      # Peru IX, Lima, Peru
+    "route-views.phoix",     # University of the Philippines, Diliman, Quezon City, Philippines
+    "route-views.rio",       # IX.br (PTT.br), Rio de Janeiro, Brazil
+    "route-views.saopaulo",  # SAOPAULO (PTT Metro, NIC.br), Sao Paulo, Brazil (RETIRED)
+    "route-views2.saopaulo", # SAOPAULO (PTT Metro, NIC.br), Sao Paulo, Brazil
+    "route-views.sfmix",     # San Francisco Metro IX, San Francisco, California
+    "route-views.siex",      # Southern Italy Exchange (SIEX), Rome, Italy (OFFLINE)
+    "route-views.sg",        # Equinix SG1, Singapore, Singapore
+    "route-views.soxrs",     # Serbia Open Exchange, Belgrade, Serbia
+    "route-views.sydney",    # Equinix SYD1, Sydney, Australia
+    "route-views.telxatl",   # TELXATL, Atlanta, Georgia
+    "route-views.uaeix",     # UAE-IX, Dubai, United Arab Emirates
+    "route-views.wide",      # DIXIE (NSPIXP), Tokyo, Japan
+    # Multi-hop collectors
+    "route-views2",          # U of Oregon, Eugene, Oregon
+    "route-views3",          # U of Oregon, Eugene, Oregon
+    "route-views4",          # U of Oregon, Eugene, Oregon
+    "route-views5",          # U of Oregon, Eugene, Oregon
+    "route-views6",          # U of Oregon, Eugene, Oregon (IPv6)
+    "route-views7",          # U of Oregon, Eugene, Oregon
+    # Applications
+    # "bgpmon",              # BGPMon, Colorado State University Fort Collins, Colorado (OFFLINE)
+    # "archive",             # Archive, includes asn.routeviews.org zone files, U of Oregon, Eugene, Oregon
+    # "bgplay",              # BGPlay, BGP update player (RETIRED), U of Oregon, Eugene, Oregon
+    # "zebra"                # BGP Beacon prefix 192.135.183.0 (RETIRED), U of Oregon, Eugene, Oregon
 ]
 
-# Kafka Consumer configuration
-consumer_conf = {
+# List of RRCs with locations
+# https://ris.ripe.net
+ris_collectors = [
+    "rrc00",                 # Amsterdam, NL - multihop, global
+    "rrc01",                 # London, GB - IXP, LINX, LONAP
+    # "rrc02",               # Paris, FR - IXP, SFINX (Historic)
+    "rrc03",                 # Amsterdam, NL - IXP, AMS-IX, NL-IX
+    "rrc04",                 # Geneva, CH - IXP, CIXP
+    "rrc05",                 # Vienna, AT - IXP, VIX
+    "rrc06",                 # Otemachi, JP - IXP, DIX-IE, JPIX
+    "rrc07",                 # Stockholm, SE - IXP, Netnod
+    # "rrc08",               # San Jose, CA, US - IXP, MAE-WEST (Historic)
+    # "rrc09",               # Zurich, CH - IXP, TIX (Historic)
+    "rrc10",                 # Milan, IT - IXP, MIX
+    "rrc11",                 # New York, NY, US - IXP, NYIIX
+    "rrc12",                 # Frankfurt, DE - IXP, DE-CIX
+    "rrc13",                 # Moscow, RU - IXP, MSK-IX
+    "rrc14",                 # Palo Alto, CA, US - IXP, PAIX
+    "rrc15",                 # Sao Paolo, BR - IXP, PTTMetro-SP
+    "rrc16",                 # Miami, FL, US - IXP, Equinix Miami
+    "rrc18",                 # Barcelona, ES - IXP, CATNIX
+    "rrc19",                 # Johannesburg, ZA - IXP, NAP Africa JB
+    "rrc20",                 # Zurich, CH - IXP, SwissIX
+    "rrc21",                 # Paris, FR - IXP, France-IX Paris and Marseille
+    "rrc22",                 # Bucharest, RO - IXP, Interlan
+    "rrc23",                 # Singapore, SG - IXP, Equinix Singapore
+    "rrc24",                 # Montevideo, UY - multihop, LACNIC region
+    "rrc25",                 # Amsterdam, NL - multihop, global
+    "rrc26",                 # Dubai, AE - IXP, UAE-IX"
+]
+
+# Route Views Kafka Consumer configuration
+rv_consumer_conf = {
+    'bootstrap.servers': 'stream.routeviews.org:9092',
+    'group.id': f"bgpdata-{hostname}",
+    'partition.assignment.strategy': 'roundrobin',
+    'enable.auto.commit': True,  # Enable automatic offset commit, we use RocksDB to store the offset
+    'auto.offset.reset': 'earliest',
+}
+
+# RIS Kafka Consumer configuration
+ris_consumer_conf = {
     'bootstrap.servers': 'node01.kafka-pub.ris.ripe.net:9094,node02.kafka-pub.ris.ripe.net:9094,node03.kafka-pub.ris.ripe.net:9094',
     'group.id': f"bgpdata-{hostname}",
     'partition.assignment.strategy': 'roundrobin',
     'enable.auto.commit': True,  # Enable automatic offset commit, we use RocksDB to store the offset
+    'auto.offset.reset': 'earliest',
+    # SASL Authentication (required for RIS Kafka)
     'security.protocol': 'SASL_SSL',
     'sasl.mechanism': 'PLAIN',
     'sasl.username': os.getenv("SASL_KAFKA_USERNAME"),
     'sasl.password': os.getenv("SASL_KAFKA_PASSWORD"),
 }
 
-avro_schema = {
+# RIS Avro Encoding schema
+ris_avro_schema = {
     "type": "record",
     "name": "RisLiveBinary",
     "namespace": "net.ripe.ris.live",
@@ -112,184 +183,7 @@ avro_schema = {
     ],
 }
 
-def mrt_to_bmp(data: str) -> List[bytes]:
-    """
-    Convert an MRT RIB files to a list of BMPv3 (RFC7854) messages.
-    (https://www.ripe.net/data-tools/services/mrt-rib-files)
-
-    Args:
-        data (str): The MRT RIB file
-
-    Returns:
-        List[bytes]: A list of BMP Route Monitoring, Keepalive, or Peer State messages in bytes
-    """
-    pass
-
-def exabgp_to_bmp(data: dict) -> List[bytes]:
-    """
-    Convert an exaBGP JSON message to a list of BMPv3 (RFC7854) messages.
-    (https://ris-live.ripe.net/)
-
-    Args:
-        data (dict): The exaBGP JSON
-
-    Returns:
-        List[bytes]: A list of BMP Route Monitoring, Keepalive, or Peer State messages in bytes
-    """
-
-    # Extract relevant fields from exaBGP message
-    peer_ip = data['peer']
-    peer_asn = int(data['peer_asn'])
-    timestamp = data['timestamp'] / 1000 # Cast from int to datetime float
-    msg_type = data['type'].upper()
-
-    bmp_messages = []
-
-    # Handle UPDATE messages
-    if msg_type == "UPDATE":
-        # Extract path attributes
-        path = data.get('path', [])
-        origin = data.get('origin', 'IGP').lower()
-        community = data.get('community', [])
-        announcements = data.get('announcements', [])
-        withdrawals = data.get('withdrawals', [])
-
-        # Common attributes
-        common_attributes = {
-            'origin': origin,
-            'as-path': path,
-            'community': community
-        }
-
-        if 'med' in data:
-            common_attributes['med'] = data['med']
-
-        # Process Announcements
-        for announcement in announcements:
-            next_hop = announcement['next_hop']
-            prefixes = announcement['prefixes']
-            # Split next_hop into a list of addresses
-            next_hop_addresses = [nh.strip() for nh in next_hop.split(',')]
-
-            # Determine the AFI based on the first prefix
-            afi = 1  # IPv4
-            if ':' in prefixes[0]:
-                afi = 2  # IPv6
-            safi = 1  # Unicast
-
-            # Build attributes for this announcement
-            attributes = common_attributes.copy()
-            attributes.update({
-                'next-hop': next_hop_addresses,
-                'afi': afi,
-                'safi': safi,
-            })
-
-            # For IPv6, include NLRI in attributes
-            if afi == 2:
-                # Build NLRI
-                nlri = b''
-                for prefix in prefixes:
-                    nlri += BMPv3.encode_prefix(prefix)
-                attributes['nlri'] = nlri
-                update_message = {
-                    'attribute': attributes,
-                }
-            else:
-                # For IPv4, include NLRI in the update_message
-                nlri = b''
-                for prefix in prefixes:
-                    nlri += BMPv3.encode_prefix(prefix)
-                update_message = {
-                    'attribute': attributes,
-                    'nlri': nlri,
-                }
-
-            # Build BMP message
-            bmp_message = BMPv3.construct_bmp_route_monitoring_message(
-                peer_ip=peer_ip,
-                peer_asn=peer_asn,
-                timestamp=timestamp,
-                update_message=update_message
-            )
-            bmp_messages.append(bmp_message)
-
-        # Process Withdrawals
-        if withdrawals:
-            afi = 1  # IPv4
-            if ':' in withdrawals[0]:
-                afi = 2  # IPv6
-            safi = 1  # Unicast
-
-            # Build attributes for withdrawals
-            attributes = common_attributes.copy()
-            attributes.update({
-                'afi': afi,
-                'safi': safi,
-            })
-
-            if afi == 2:
-                # For IPv6, withdrawals are included in MP_UNREACH_NLRI
-                nlri = b''
-                for prefix in withdrawals:
-                    nlri += BMPv3.encode_prefix(prefix)
-                attributes['withdrawn_nlri'] = nlri
-                update_message = {
-                    'attribute': attributes,
-                }
-            else:
-                # For IPv4, withdrawals are in the BGP UPDATE message body
-                withdrawn_routes = b''
-                for prefix in withdrawals:
-                    withdrawn_routes += BMPv3.encode_prefix(prefix)
-                update_message = {
-                    'attribute': attributes,
-                    'withdrawn_routes': withdrawn_routes,
-                }
-
-            # Build BMP message
-            bmp_message = BMPv3.construct_bmp_route_monitoring_message(
-                peer_ip=peer_ip,
-                peer_asn=peer_asn,
-                timestamp=timestamp,
-                update_message=update_message
-            )
-            bmp_messages.append(bmp_message)
-
-    # Handle KEEPALIVE messages
-    elif msg_type == "KEEPALIVE":
-        bmp_message = BMPv3.construct_bmp_keepalive_message(
-            peer_ip=peer_ip,
-            peer_asn=peer_asn,
-            timestamp=timestamp
-        )
-        bmp_messages.append(bmp_message)
-
-    # Handle RIS_PEER_STATE messages
-    elif msg_type == "RIS_PEER_STATE":
-        state = data['state']
-        if state.lower() == 'connected':
-            # Peer Up message
-            bmp_message = BMPv3.construct_bmp_peer_up_message(
-                peer_ip=peer_ip,
-                peer_asn=peer_asn,
-                timestamp=timestamp
-            )
-            bmp_messages.append(bmp_message)
-        elif state.lower() == 'down':
-            # Peer Down message
-            bmp_message = BMPv3.construct_bmp_peer_down_message(
-                peer_ip=peer_ip,
-                peer_asn=peer_asn,
-                timestamp=timestamp,
-                notification_message={}
-            )
-            bmp_messages.append(bmp_message)
-
-    return bmp_messages
-
-
-def on_assign(consumer, partitions, offset):
+def on_assign(consumer, partitions, db):
     """
     Callback function to handle partition assigning/rebalancing.
 
@@ -299,7 +193,7 @@ def on_assign(consumer, partitions, offset):
     Args:
         consumer: The Kafka consumer instance.
         partitions: A list of TopicPartition objects representing the newly assigned partitions.
-        offset: The offset to assign to the partitions.
+        db: The RocksDB database to store the offset.
     """
     try:
         if partitions[0].error:
@@ -309,8 +203,8 @@ def on_assign(consumer, partitions, offset):
 
             # Set the offset for each partition
             for partition in partitions:
-                logger.info(f"Setting offset for partition {partition.partition} to {offset}")
-                #partition.offset = offset
+                partition.offset = int.from_bytes(db.get(f'{consumer.topic()}'.encode('utf-8')) or b'\x00', byteorder='big')
+                logger.info(f"Setting offset for partition {partition.partition} of {consumer.topic()} to {partition.offset}")
             
             # Assign the partitions to the consumer
             consumer.assign(partitions)
@@ -337,15 +231,83 @@ async def log_status(status, queue):
         bytes_sent = status['bytes_sent']
         kbps_counter = (bytes_sent * 8) / seconds / 1000  # Convert bytes to kilobits per second
 
-        logger.info(f"At time: {status['timestamp']}, "
-                    f"Time lag: ~{status['time_lag'].total_seconds()} seconds, "
-                    f"Transmitting at ~{kbps_counter:.2f} kbit/s, "
-                    f"Queue size: ~{queue.qsize()}")
+        if status['activity'] == "CONNECTING":
+            # Connecting
+            logger.info(f"Activity: {status['activity']}, "
+                        f"Transmitting at ~{kbps_counter:.2f} kbit/s")
+        elif status['activity'] == "RIB_INJECTION":
+            # RIB Injection
+            logger.info(f"Activity: {status['activity']}, "
+                        f"Transmitting at ~{kbps_counter:.2f} kbit/s, "
+                        f"Queue size: ~{queue.qsize()}")
+        elif status['activity'] == "KAFKA_POLLING":
+            # Kafka Polling
+            logger.info(f"Activity: {status['activity']}, "
+                        f"Time lag: ~{status['time_lag'].total_seconds()} seconds, "
+                        f"Transmitting at ~{kbps_counter:.2f} kbit/s, "
+                        f"Queue size: ~{queue.qsize()}")
 
         # Reset bytes_sent
         status['bytes_sent'] = 0
 
-async def consumer_task(consumer, queue, status, batch_size):
+async def rib_task(queue, status, ready):
+    """
+    Task to inject RIB messages from MRT Data Dumps into the queue.
+
+    Args:
+        queue (asyncio.Queue): The queue to add the messages to.
+        status (dict): The status dictionary to update the time lag.
+        ready (asyncio.Event): The event to wait for before starting.
+    """
+
+    status['activity'] = "RIB_INJECTION"
+    
+    # RIS RIB Dumps
+    for rrc in ris_collectors:
+        parser = bgpkit.Parser(url=f"https://data.ris.ripe.net/{rrc}/latest-bview.gz")
+        for elem in parser:
+            # Construct the collector name
+            collector = f"{rrc}.ripe.net"
+
+            # Construct the BMP message
+            messages = BMPv3.construct(
+                collector,
+                elem['peer_ip'],
+                elem['peer_asn'],
+                elem['timestamp'],
+                "UPDATE",
+                [
+                    [int(asn) for asn in part[1:-1].split(',')] if part.startswith('{') and part.endswith('}')
+                    else int(part)
+                    for part in elem['as_path'].split()
+                ],
+                elem['origin'],
+                [
+                    # Only include compliant communities: either 2 or 3 parts when split by ":"
+                    [int(part) for part in comm.split(":")[1:]]
+                    for comm in (elem.get("communities") or [])
+                    if len(comm.split(":")) in {2, 3}  # Filter out non-compliant entries
+                ],
+                [
+                    {
+                        "next_hop": elem["next_hop"],
+                        "prefixes": [elem["prefix"]]
+                    }
+                ],
+                [],
+                None,
+                0
+            )
+
+            # Add the message to the queue
+            for message in messages:
+                await queue.put((message, 0, 'ris', collector))
+
+        # We are done, ready to start
+        ready.set()
+
+
+async def kafka_task(consumer, queue, status, batch_size, provider, ready):
     """
     Task to poll a batch of messages from Kafka and add them to the queue.
 
@@ -354,7 +316,15 @@ async def consumer_task(consumer, queue, status, batch_size):
         queue (asyncio.Queue): The queue to add the messages to.
         status (dict): The status dictionary to update the time lag.
         batch_size (int): Number of messages to fetch at once.
+        provider (str): The provider of the messages.
+        ready (asyncio.Event): The event to wait for before starting.
     """
+
+    # Wait for ready event
+    await ready.wait()
+
+    status['activity'] = "KAFKA_POLLING"
+
     loop = asyncio.get_running_loop()
     
     while True:
@@ -368,27 +338,60 @@ async def consumer_task(consumer, queue, status, batch_size):
             if msg.error():
                 if msg.error().code() == KafkaError._PARTITION_EOF:
                     logger.info(f"End of partition reached: {msg.error()}")
-                elif msg.error().code() == KafkaError._THROTTLING:
-                    logger.warning(f"Kafka throttle event: {msg.error()}")
                 else:
                     logger.error(f"Kafka error: {msg.error()}", exc_info=True)
                 continue
 
             # Process the message
             value = msg.value()
-            value = value[5:]  # Remove the first 5 bytes if necessary
 
-            # Parse the Avro encoded exaBGP message
-            parsed = fastavro.schemaless_reader(BytesIO(value), avro_schema)
+            match provider:
+                case 'route-views':
+                    # Skip the raw binary header (we don't need the fields)
+                    value = value[76 + struct.unpack("!H", value[54:56])[0] + struct.unpack("!H", value[72:74])[0]:]
 
+                    # Extract the collector name from the topic
+                    collector = msg.topic()
+
+                    # TODO: Parse the message and replace the peer_distinguisher with our own hash representation
+                    #       Of the Route Views Collector name (SHA256) through the BMPv3.construct() function.
+
+                    # Add the message
+                    messages.append(value)
+                case 'ris':
+                    # Remove the first 5 bytes (we don't need them)
+                    value = value[5:]
+
+                    # Extract the collector name from the topic
+                    collector = parsed['host']
+
+                    # Parse the Avro encoded exaBGP message
+                    parsed = fastavro.schemaless_reader(BytesIO(value), ris_avro_schema)
+                    timestamp = parsed['timestamp'] / 1000  # Cast from int to datetime float
+
+                    # Parse to BMP messages and add to the queue
+                    marshal = json.loads(parsed['ris_live'])
+                    messages = BMPv3.construct(
+                        collector,
+                        marshal['peer'],
+                        marshal['peer_asn'],
+                        marshal['timestamp'] / 1000, # Cast from int to datetime float
+                        marshal['type'],
+                        marshal['path'],
+                        marshal['origin'],
+                        marshal['community'],
+                        marshal['announcements'],
+                        marshal['withdrawals'],
+                        marshal['state'],
+                        marshal['med']
+                    )
+                
             # Update the timestamp and time lag
-            status['timestamp'] = datetime.fromtimestamp(parsed['timestamp'] / 1000)
+            status['timestamp'] = datetime.fromtimestamp(timestamp)
             status['time_lag'] = datetime.now() - status['timestamp']
 
-            # Parse to BMP messages and add to the queue
-            messages = exabgp_to_bmp(json.loads(parsed['ris_live']))
             for message in messages:
-                await queue.put((message, msg.offset()))
+                await queue.put((message, msg.offset(), provider, collector))
 
 async def sender_task(queue, writer, db, status):
     """
@@ -402,7 +405,7 @@ async def sender_task(queue, writer, db, status):
         status (dict): The status dictionary to update the bytes sent counter.
     """
     while True:
-        message, offset = await queue.get()
+        message, offset, provider, collector = await queue.get()
 
         try:
             # Send the message over TCP
@@ -410,19 +413,22 @@ async def sender_task(queue, writer, db, status):
             await writer.drain()
             status['bytes_sent'] += len(message)
             
-            # Save offset after successful send
-            db.set(b'offset', offset.to_bytes(64, byteorder='big'))
+            # Save offset to RocksDB
+            db.set(
+                f'{provider}_{collector}'.encode('utf-8'),
+                offset.to_bytes(64, byteorder='big')
+            )
             queue.task_done()
 
         except Exception as e:
             logger.error("Error sending message over TCP", exc_info=True)
-            # On failure, exit forcefully
+            # On failure, exit forcefully (Better than risking corruption)
             sys.exit(1)
 
 
 async def main():
     """
-    Main function to consume messages from RIS Raw Data Dumps and RIS Live Kafka, process them, and insert them into OpenBMP.
+    Main function to consume messages from MRT Dumps and Kafka, process them, and insert them into OpenBMP.
 
     This asynchronous function sets up a Kafka consumer, subscribes to the specified topic,
     and continuously polls for messages. It processes messages in batches, dynamically
@@ -431,9 +437,9 @@ async def main():
     The function performs the following key operations:
     1. Sets up RocksDB and a Kafka consumer with specified configuration and callbacks.
     2. Establishes a persistent TCP connection to the OpenBMP collector.
-    3. May perform initial catchup by Route Injecting MRT records from RIS Raw Data Dumps.
-    4. Dynamically adjusts RIS Live Kafka polling intervals based on message time lag.
-    5. Processes messages, including deserialization to exaBGP JSON and translation to BMPv3 (RFC7854).
+    3. May perform initial catchup by Route Injecting MRT records from MRT Data Dumps.
+    4. Dynamically adjusts Kafka polling intervals based on message time lag.
+    5. Processes messages, including possible deserialization and translation to BMPv3 (RFC7854).
     6. Sends processed BMP messages over TCP to the OpenBMP collector and updates the offset in RocksDB.
     7. Handles various error scenarios and implements retry logic.
 
@@ -448,18 +454,46 @@ async def main():
     await asyncio.sleep(10)
 
     # Create RocksDB database
-    db = rocksdbpy.open_default("checkpoint.db")
+    db = rocksdbpy.open_default("offset.db")
 
-    # Create Kafka consumer
-    consumer = Consumer(consumer_conf)
+    # Create Route Views Kafka Consumer
+    rv_consumer = Consumer(rv_consumer_conf)
 
-    # Get running asyncio loop
-    loop = asyncio.get_running_loop()
+    # Create RIS Live Kafka Consumer
+    ris_consumer = Consumer(ris_consumer_conf)
+
+    # Define queue with a limit
+    queue = asyncio.Queue(maxsize=QUEUE_SIZE)
+
+    # Initialize status dictionary to share variables between main and log_status
+    status = {
+        'timestamp': datetime.now(),           # Initialize timestamp
+        'time_lag': timedelta(0),              # Initialize time lag
+        'bytes_sent': 0,                       # Initialize bytes sent counter
+        'activity': "CONNECTING",              # Initialize activity
+    }
+
+    # Start logging task that is updated within the loop
+    logging_task = asyncio.create_task(log_status(status, queue))
 
     # Create OpenBMP Socket with retry until timeout
-    timeout = int(os.getenv('OPENBMP_COLLECTOR_TIMEOUT', 30))  # Default to 30 seconds if not set
+    timeout = int(os.getenv('OPENBMP_COLLECTOR_TIMEOUT', '30'))  # Default to 30 seconds if not set
     host = os.getenv('OPENBMP_COLLECTOR_HOST')
     port = int(os.getenv('OPENBMP_COLLECTOR_PORT'))
+
+    # Subscribe to Route Views Kafka Consumer
+    rv_consumer.subscribe(
+        [f'bmp.rv.routeviews.{i}' for i in rv_collectors],
+        on_assign=lambda c, p: on_assign(c, p, db),
+        on_revoke=lambda c, p: logger.info(f"Revoked partitions: {[part.partition for part in p]}")
+    )
+
+    # Subscribe to RIS Live Kafka Consumer
+    ris_consumer.subscribe(
+        ['ris-live'],
+        on_assign=lambda c, p: on_assign(c, p, db),
+        on_revoke=lambda c, p: logger.info(f"Revoked partitions: {[part.partition for part in p]}")
+    )
 
     start_time = time.time()
     while True:
@@ -481,42 +515,27 @@ async def main():
             logger.error("An unexpected error occurred while trying to connect to OpenBMP collector", exc_info=True)
             raise
 
-    # Retrieve offset from RocksDB
-    offset = int.from_bytes(db.get(b'offset') or b'\x00', byteorder='big')
-    logger.info(f"Retrieved offset from RocksDB: {offset}")
-
-    if offset == 0:
-        # Route Inject MRT records from most recent RIS Raw Data Dump
-        logger.info("Route Injecting MRT records from most recent RIS Raw Data Dump")
-        pass
-
-    # Subscribe to Kafka from a specific offset value
-    consumer.subscribe(
-        ['ris-live'],
-        on_assign=lambda c, p: on_assign(c, p, offset),
-        on_revoke=lambda c, p: logger.info(f"Revoked partitions: {[part.partition for part in p]}")
-    )
-
-    # Initialize status dictionary to share variables between main and log_status
-    status = {
-        'timestamp': datetime.now(),           # Initialize timestamp
-        'time_lag': timedelta(0),              # Initialize time lag
-        'bytes_sent': 0,                       # Initialize bytes sent counter
-    }
-
-    # Define queue with a limit
-    queue = asyncio.Queue(maxsize=QUEUE_SIZE)  # Define queue with a limit
-
-    # Start logging task that is updated within the loop
-    logging_task = asyncio.create_task(log_status(status, queue))
-
-    # Start consumer task that is queueing messages
-    consumer_coro = consumer_task(consumer, queue, status, BATCH_SIZE)
-    sender_coro = sender_task(queue, writer, db, status)
-
     try:
+        # Create iterator
+        ready = asyncio.Event()
+        initialized = any(db.iterator())
+
+        if initialized:
+            ready.set()
+
         # Start tasks independently for maximum throughput
-        await asyncio.gather(consumer_coro, sender_coro, logging_task)
+        await asyncio.gather(
+            # RIB Consumer
+            rib_task(queue, status, ready),
+            # Route Views Kafka Consumer
+            kafka_task(rv_consumer, queue, status, BATCH_SIZE, 'route-views', ready),
+            # RIS Kafka Consumer
+            kafka_task(ris_consumer, queue, status, BATCH_SIZE, 'ris', ready),
+            # Sender
+            sender_task(queue, writer, db, status),
+            # Logging
+            logging_task
+        )
     except Exception as e:
         logger.error("Fatal error", exc_info=True)
     finally:

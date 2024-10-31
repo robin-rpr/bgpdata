@@ -15,7 +15,8 @@ Redistribution and use in source and binary forms, with or without modification,
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-
+from typing import List
+import hashlib
 import struct
 import socket
 
@@ -40,7 +41,7 @@ class BMPv3:
             Build the BGP NOTIFICATION message in bytes.
         build_bgp_update_message(update_message: dict) -> bytes:
             Build the BGP UPDATE message in bytes.
-        build_bmp_per_peer_header(peer_ip: str, peer_asn: int, timestamp: float) -> bytes:
+        build_bmp_per_peer_header(peer_ip: str, peer_asn: int, timestamp: float, collector: str) -> bytes:
             Build the BMP Per-Peer Header.
         construct_bmp_peer_up_message(peer_ip: str, peer_asn: int, timestamp: float) -> bytes:
             Construct a BMP Peer Up Notification message.
@@ -67,9 +68,177 @@ class BMPv3:
     BGP_VERSION = 4
     BGP_CAP_PARAM_TYPE = 2
     BGP_AS_TRANS = 23456          # BGP ASN when AS exceeds 16bits
+
+    @staticmethod
+    def construct(collector: str, peer_ip: str, peer_asn: int, timestamp: float, msg_type: str, path=[], origin='IGP', community=[], announcements=[], withdrawals=[], state=None, med=None) -> List[bytes]:
+        """
+        Construct BMPv3 (RFC7854) messages.
+
+        Args:
+            collector (str): The collector name
+            peer_ip (str): The peer IP address
+            peer_asn (int): The peer AS number
+            timestamp (float): The timestamp
+            msg_type (str): The message type
+            path (list): The AS path
+            origin (str): The origin
+            community (list): The community list
+            announcements (list): The announcement list
+            withdrawals (list): The withdrawal list
+            state (str): The peer state
+            med (int): The MED value
+
+        Returns:
+            List[bytes]: A list of BMP Route Monitoring, Keepalive, or Peer State messages in bytes
+        """
+        # Initialize the list of BMP messages
+        bmp_messages = []
+
+        # Handle UPDATE messages
+        if msg_type.upper() == "UPDATE":
+            # Common attributes
+            common_attributes = {
+                'origin': origin.lower(),
+                'as-path': path,
+                'community': community
+            }
+
+            if med is not None:
+                common_attributes['med'] = med
+
+            # Process Announcements
+            for announcement in announcements:
+                next_hop = announcement['next_hop']
+                prefixes = announcement['prefixes']
+                # Split next_hop into a list of addresses
+                next_hop_addresses = [nh.strip() for nh in next_hop.split(',')]
+
+                # Determine the AFI based on the first prefix
+                afi = 1  # IPv4
+                if ':' in prefixes[0]:
+                    afi = 2  # IPv6
+                safi = 1  # Unicast
+
+                # Build attributes for this announcement
+                attributes = common_attributes.copy()
+                attributes.update({
+                    'next-hop': next_hop_addresses,
+                    'afi': afi,
+                    'safi': safi,
+                })
+
+                # For IPv6, include NLRI in attributes
+                if afi == 2:
+                    # Build NLRI
+                    nlri = b''
+                    for prefix in prefixes:
+                        nlri += BMPv3.encode_prefix(prefix)
+                    attributes['nlri'] = nlri
+                    update_message = {
+                        'attribute': attributes,
+                    }
+                else:
+                    # For IPv4, include NLRI in the update_message
+                    nlri = b''
+                    for prefix in prefixes:
+                        nlri += BMPv3.encode_prefix(prefix)
+                    update_message = {
+                        'attribute': attributes,
+                        'nlri': nlri,
+                    }
+
+                # Build BMP message
+                bmp_message = BMPv3.construct_bmp_route_monitoring_message(
+                    peer_ip=peer_ip,
+                    peer_asn=peer_asn,
+                    timestamp=timestamp,
+                    update_message=update_message,
+                    collector=collector
+                )
+                bmp_messages.append(bmp_message)
+
+            # Process Withdrawals
+            if withdrawals:
+                afi = 1  # IPv4
+                if ':' in withdrawals[0]:
+                    afi = 2  # IPv6
+                safi = 1  # Unicast
+
+                # Build attributes for withdrawals
+                attributes = common_attributes.copy()
+                attributes.update({
+                    'afi': afi,
+                    'safi': safi,
+                })
+
+                if afi == 2:
+                    # For IPv6, withdrawals are included in MP_UNREACH_NLRI
+                    nlri = b''
+                    for prefix in withdrawals:
+                        nlri += BMPv3.encode_prefix(prefix)
+                    attributes['withdrawn_nlri'] = nlri
+                    update_message = {
+                        'attribute': attributes,
+                    }
+                else:
+                    # For IPv4, withdrawals are in the BGP UPDATE message body
+                    withdrawn_routes = b''
+                    for prefix in withdrawals:
+                        withdrawn_routes += BMPv3.encode_prefix(prefix)
+                    update_message = {
+                        'attribute': attributes,
+                        'withdrawn_routes': withdrawn_routes,
+                    }
+
+                # Build BMP message
+                bmp_message = BMPv3.construct_bmp_route_monitoring_message(
+                    peer_ip=peer_ip,
+                    peer_asn=peer_asn,
+                    timestamp=timestamp,
+                    update_message=update_message,
+                    collector=collector
+                )
+                bmp_messages.append(bmp_message)
+
+        # Handle KEEPALIVE messages
+        elif msg_type.upper() == "KEEPALIVE":
+            bmp_message = BMPv3.construct_bmp_keepalive_message(
+                peer_ip=peer_ip,
+                peer_asn=peer_asn,
+                timestamp=timestamp,
+                collector=collector
+            )
+            bmp_messages.append(bmp_message)
+
+        # Handle RIS_PEER_STATE messages
+        elif msg_type.upper() == "RIS_PEER_STATE":
+            if state is None:
+                raise ValueError("State must be provided for RIS_PEER_STATE messages")
+            
+            if state.lower() == 'connected':
+                # Peer Up message
+                bmp_message = BMPv3.construct_bmp_peer_up_message(
+                    peer_ip=peer_ip,
+                    peer_asn=peer_asn,
+                    timestamp=timestamp,
+                    collector=collector
+                )
+                bmp_messages.append(bmp_message)
+            elif state.lower() == 'down':
+                # Peer Down message
+                bmp_message = BMPv3.construct_bmp_peer_down_message(
+                    peer_ip=peer_ip,
+                    peer_asn=peer_asn,
+                    timestamp=timestamp,
+                    notification_message={},
+                    collector=collector
+                )
+                bmp_messages.append(bmp_message)
+
+        return bmp_messages
         
     @staticmethod
-    def construct_bmp_route_monitoring_message(peer_ip, peer_asn, timestamp, update_message):
+    def construct_bmp_route_monitoring_message(peer_ip, peer_asn, timestamp, update_message, collector):
         """
         Construct a BMP Route Monitoring message containing a BGP UPDATE message.
 
@@ -78,6 +247,7 @@ class BMPv3:
             peer_asn (int): The peer AS number
             timestamp (float): The timestamp
             update_message (dict): The BGP UPDATE message in dictionary form
+            collector (str): The collector name
 
         Returns:
             bytes: The BMP message in bytes
@@ -87,7 +257,7 @@ class BMPv3:
 
         # Build the BMP Common Header
         bmp_msg_type = 0  # Route Monitoring
-        per_peer_header = BMPv3.build_bmp_per_peer_header(peer_ip, peer_asn, timestamp)
+        per_peer_header = BMPv3.build_bmp_per_peer_header(peer_ip, peer_asn, timestamp, collector)
 
         total_length = BMPv3.BMP_HDRv3_LEN + len(per_peer_header) + len(bgp_update)
 
@@ -99,7 +269,7 @@ class BMPv3:
         return bmp_message
 
     @staticmethod
-    def construct_bmp_keepalive_message(peer_ip, peer_asn, timestamp):
+    def construct_bmp_keepalive_message(peer_ip, peer_asn, timestamp, collector):
         """
         Construct a BMP Route Monitoring message containing a BGP KEEPALIVE message.
 
@@ -107,6 +277,7 @@ class BMPv3:
             peer_ip (str): The peer IP address.
             peer_asn (int): The peer AS number.
             timestamp (float): The timestamp.
+            collector (str): The collector name.
 
         Returns:
             bytes: The BMP message in bytes.
@@ -116,7 +287,7 @@ class BMPv3:
 
         # Build the BMP Common Header
         bmp_msg_type = 0  # Route Monitoring
-        per_peer_header = BMPv3.build_bmp_per_peer_header(peer_ip, peer_asn, timestamp)
+        per_peer_header = BMPv3.build_bmp_per_peer_header(peer_ip, peer_asn, timestamp, collector)
 
         total_length = BMPv3.BMP_HDRv3_LEN + len(per_peer_header) + len(bgp_keepalive)
 
@@ -128,7 +299,7 @@ class BMPv3:
         return bmp_message
 
     @staticmethod
-    def construct_bmp_peer_up_message(peer_ip, peer_asn, timestamp):
+    def construct_bmp_peer_up_message(peer_ip, peer_asn, timestamp, collector):
         """
         Construct a BMP Peer Up Notification message.
 
@@ -136,13 +307,14 @@ class BMPv3:
             peer_ip (str): The peer IP address.
             peer_asn (int): The peer AS number.
             timestamp (float): The timestamp.
+            collector (str): The collector name.
 
         Returns:
             bytes: The BMP message in bytes.
         """
         # For simplicity, we will not include all optional fields
         bmp_msg_type = 3  # Peer Up Notification
-        per_peer_header = BMPv3.build_bmp_per_peer_header(peer_ip, peer_asn, timestamp)
+        per_peer_header = BMPv3.build_bmp_per_peer_header(peer_ip, peer_asn, timestamp, collector)
 
         # Local Address (16 bytes), Local Port (2 bytes), Remote Port (2 bytes), Sent OPEN Message, Received OPEN Message
         # For simplicity, we'll use placeholders
@@ -164,7 +336,7 @@ class BMPv3:
         return bmp_message
 
     @staticmethod
-    def construct_bmp_peer_down_message(peer_ip, peer_asn, timestamp, notification_message):
+    def construct_bmp_peer_down_message(peer_ip, peer_asn, timestamp, notification_message, collector):
         """
         Construct a BMP Peer Down Notification message.
 
@@ -173,7 +345,8 @@ class BMPv3:
             peer_asn (int): The peer AS number.
             timestamp (float): The timestamp.
             notification_message (dict): The BGP Notification message in dictionary form.
-
+            collector (str): The collector name.
+            
         Returns:
             bytes: The BMP message in bytes.
         """
@@ -182,7 +355,7 @@ class BMPv3:
 
         # Build the BMP Common Header
         bmp_msg_type = 2  # Peer Down Notification
-        per_peer_header = BMPv3.build_bmp_per_peer_header(peer_ip, peer_asn, timestamp)
+        per_peer_header = BMPv3.build_bmp_per_peer_header(peer_ip, peer_asn, timestamp, collector)
 
         # Reason: 1-byte code indicating the reason. For simplicity, use 1 (Local system closed the session)
         reason = struct.pack('!B', 1)  # Reason Code 1
@@ -454,8 +627,16 @@ class BMPv3:
                 attr_type = 8
                 community_value = b''
                 for comm in community:
-                    asn, value = comm
-                    community_value += struct.pack('!HH', int(asn), int(value))
+                    if len(comm) == 2:
+                        # Standard community: (ASN, sub-identifier)
+                        asn, value = comm
+                        community_value += struct.pack('!HH', int(asn), int(value))
+                    elif len(comm) == 3:
+                        # Large community: (ASN, sub-identifier1, sub-identifier2)
+                        asn, value1, value2 = comm
+                        community_value += struct.pack('!III', int(asn), int(value1), int(value2))
+                        attr_type = 32  # Attribute type for large community
+
                 attr_length = len(community_value)
                 if attr_length > 255:
                     attr_flags |= 0x10  # Extended Length
@@ -523,39 +704,9 @@ class BMPv3:
         bgp_message = marker + struct.pack('!HB', length, msg_type) + notification
 
         return bgp_message
-    
-    @staticmethod
-    def build_peer_distinguisher(rd_type, admin_subfield, assigned_number):
-        """
-        Build the Peer Distinguisher.
-
-        Args:
-            rd_type (int): The Route Distinguisher type (0, 1, or 2).
-            admin_subfield (int): The administrative subfield.
-            assigned_number (int): The assigned number.
-
-        Returns:
-            bytes: The 8-byte Peer Distinguisher.
-        """
-
-        # Pack the RD Type (2 bytes)
-        rd_type_bytes = struct.pack('!H', rd_type)
-
-        if rd_type == 0:
-            # Type 0: admin_subfield (2 bytes), assigned_number (4 bytes)
-            admin_bytes = struct.pack('!H', admin_subfield)
-            assigned_bytes = struct.pack('!I', assigned_number)
-        else:
-            # Type 1 or 2: admin_subfield (4 bytes), assigned_number (2 bytes)
-            admin_bytes = struct.pack('!I', admin_subfield)
-            assigned_bytes = struct.pack('!H', assigned_number)
-
-        # Combine all parts to form the 8-byte Peer RD
-        peer_distinguisher = rd_type_bytes + admin_bytes + assigned_bytes
-        return peer_distinguisher
 
     @staticmethod
-    def build_bmp_per_peer_header(peer_ip, peer_asn, timestamp):
+    def build_bmp_per_peer_header(peer_ip, peer_asn, timestamp, collector):
         """
         Build the BMP Per-Peer Header.
 
@@ -563,15 +714,14 @@ class BMPv3:
             peer_ip (str): The peer IP address.
             peer_asn (int): The peer AS number.
             timestamp (float): The timestamp.
+            collector (str): The collector name.
 
         Returns:
             bytes: The Per-Peer Header in bytes.
         """
         peer_type = 0  # Global Instance Peer
         peer_flags = 0
-        # Peer Distinguisher (8 bytes): set to zero for Global Instance Peer
-        #peer_distinguisher = b'\x00' * 8
-        peer_distinguisher = BMPv3.build_peer_distinguisher(peer_type, 0, 0)
+        peer_distinguisher = hashlib.sha256(collector.encode('utf-8')).digest()[:8]
 
         # Peer Address (16 bytes): IPv4 mapped into IPv6
         if ':' in peer_ip:
