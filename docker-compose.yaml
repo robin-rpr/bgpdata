@@ -83,12 +83,7 @@ services:
         container_name: core-collector
         restart: unless-stopped
         environment:
-            - POSTGRESQL_DATABASE=postgresql+asyncpg://core:core@core-db:5432/default
-            - SASL_KAFKA_USERNAME=public
-            - SASL_KAFKA_PASSWORD=public
-            - OPENBMP_COLLECTOR_HOST=openbmp-collector
-            - OPENBMP_COLLECTOR_PORT=5000
-            - OPENBMP_COLLECTOR_TIMEOUT=60
+            - OPENBMP_COLLECTORS=openbmp-collector:5000
         depends_on:
             openbmp-collector:
                 condition: service_healthy

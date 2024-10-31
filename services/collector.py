@@ -148,8 +148,8 @@ ris_consumer_conf = {
     # SASL Authentication (required for RIS Kafka)
     'security.protocol': 'SASL_SSL',
     'sasl.mechanism': 'PLAIN',
-    'sasl.username': os.getenv("SASL_KAFKA_USERNAME"),
-    'sasl.password': os.getenv("SASL_KAFKA_PASSWORD"),
+    'sasl.username': 'public',
+    'sasl.password': 'public',
 }
 
 # RIS Avro Encoding schema
@@ -252,7 +252,7 @@ async def log_status(status, queue):
         # Reset bytes_sent
         status['bytes_sent'] = 0
 
-async def rib_task(queue, status, collectors, provider, ready):
+async def rib_task(queue, status, collectors, provider, events):
     """
     Task to inject RIB messages from MRT Data Dumps into the queue.
 
@@ -260,7 +260,9 @@ async def rib_task(queue, status, collectors, provider, ready):
         queue (asyncio.Queue): The queue to add the messages to.
         status (dict): The status dictionary to update the time lag.
         provider (str): The provider of the MRT Data Dumps.
-        ready (asyncio.Event): The event to wait for before starting.
+        events (dict): A dictionary containing the following keys:
+            - route-views (asyncio.Event): The event to wait for before starting.
+            - ris (asyncio.Event): The event to wait for before starting.
     """
 
     status['activity'] = "RIB_INJECTION"
@@ -272,12 +274,9 @@ async def rib_task(queue, status, collectors, provider, ready):
         for host, url in collectors:
             parser = bgpkit.Parser(url=url)
             for elem in parser:
-                # Construct the collector name
-                collector = host
-
                 # Construct the BMP message
                 messages = BMPv3.construct(
-                    collector,
+                    host,
                     elem['peer_ip'],
                     elem['peer_asn'],
                     elem['timestamp'],
@@ -307,17 +306,17 @@ async def rib_task(queue, status, collectors, provider, ready):
 
                 # Add the message to the queue
                 for message in messages:
-                    await queue.put((message, 0, 'ris', collector))
+                    await queue.put((message, 0, 'ris', host))
 
     except Exception as e:
         logger.error(f"Error injecting RIB from {provider} collectors: {e}", exc_info=True)
         raise e
 
-    # We are done, ready to start
-    ready.set()
+    # We are done, mark as ready
+    events[provider].set()
 
 
-async def kafka_task(consumer, topics, queue, db, status, batch_size, provider, ready):
+async def kafka_task(consumer, topics, queue, db, status, batch_size, provider, events):
     """
     Task to poll a batch of messages from Kafka and add them to the queue.
 
@@ -327,11 +326,13 @@ async def kafka_task(consumer, topics, queue, db, status, batch_size, provider, 
         status (dict): The status dictionary to update the time lag.
         batch_size (int): Number of messages to fetch at once.
         provider (str): The provider of the messages.
-        ready (asyncio.Event): The event to wait for before starting.
+        events (dict): A dictionary containing the following keys:
+            - route-views (asyncio.Event): The event to wait for before starting.
+            - ris (asyncio.Event): The event to wait for before starting.
     """
 
-    # Wait for ready event
-    await ready.wait()
+    # Wait for all providers to be ready
+    await asyncio.gather(*[events[p].wait() for p in events])
 
     status['activity'] = "KAFKA_POLLING"
 
@@ -363,7 +364,7 @@ async def kafka_task(consumer, topics, queue, db, status, batch_size, provider, 
 
             # Process the message
             value = msg.value()
-            collector = msg.topic()
+            topic = msg.topic()
 
             match provider:
                 case 'route-views':
@@ -371,13 +372,16 @@ async def kafka_task(consumer, topics, queue, db, status, batch_size, provider, 
                     value = value[76 + struct.unpack("!H", value[54:56])[0] + struct.unpack("!H", value[72:74])[0]:]
 
                     # TODO: Parse the message and replace the peer_distinguisher with our own hash representation
-                    #       Of the Route Views Collector name (SHA256) through the BMPv3.construct() function.
+                    #       Of the Route Views Collector name (SHA256) through the BMPv3.construct() function (e.g. the host).
 
                     # Add the message
                     messages.append(value)
                 case 'ris':
                     # Remove the first 5 bytes (we don't need them)
                     value = value[5:]
+
+                    # Extract Host
+                    host = parsed['host']
 
                     # Parse the Avro encoded exaBGP message
                     parsed = fastavro.schemaless_reader(BytesIO(value), ris_avro_schema)
@@ -386,7 +390,7 @@ async def kafka_task(consumer, topics, queue, db, status, batch_size, provider, 
                     # Parse to BMP messages and add to the queue
                     marshal = json.loads(parsed['ris_live'])
                     messages = BMPv3.construct(
-                        parsed['host'],
+                        host,
                         marshal['peer'],
                         marshal['peer_asn'],
                         marshal['timestamp'] / 1000, # Cast from int to datetime float
@@ -405,21 +409,45 @@ async def kafka_task(consumer, topics, queue, db, status, batch_size, provider, 
             status['time_lag'] = datetime.now() - status['timestamp']
 
             for message in messages:
-                await queue.put((message, msg.offset(), provider, collector))
+                await queue.put((message, msg.offset(), provider, topic))
 
-async def sender_task(queue, writer, db, status):
+async def sender_task(queue, host, port, db, status):
     """
     Task to transmit messages from the queue to the TCP socket.
     Only updates offset in RocksDB once message is successfully sent.
 
     Args:
         queue (asyncio.Queue): The queue containing the messages to send.
-        writer (asyncio.StreamWriter): The TCP writer to send the messages over.
+        host (str): The host of the OpenBMP collector.
+        port (int): The port of the OpenBMP collector.
         db (rocksdbpy.DB): The RocksDB database to store the offset.
         status (dict): The status dictionary to update the bytes sent counter.
     """
+    # Establish connection to OpenBMP collector
+    timeout = 60 # 1 minute timeout
+    start_time = time.time()
     while True:
-        message, offset, provider, collector = await queue.get()
+        try:
+            # Create a non-blocking socket
+            _, writer = await asyncio.open_connection(host, port)
+            logger.info(f"Connected to OpenBMP collector at {host}:{port}")
+            break  # Success
+        except (OSError, socket.error) as e:
+            elapsed_time = time.time() - start_time
+            if elapsed_time >= timeout:
+                logger.error(f"Unable to connect to OpenBMP collector within {timeout} seconds")
+                raise Exception(f"Unable to connect to OpenBMP collector within {timeout} seconds") from e
+            else:
+                logger.warning(f"Connection failed, retrying in 10 seconds... ({elapsed_time:.1f}s elapsed)")
+                await asyncio.sleep(10)  # Wait before retrying
+        except Exception as e:
+            # Handle other exceptions
+            logger.error("An unexpected error occurred while trying to connect to OpenBMP collector", exc_info=True)
+            raise
+
+    # Transmit messages to OpenBMP collector
+    while True:
+        message, offset, provider, topic = await queue.get()
 
         try:
             # Send the message over TCP
@@ -429,13 +457,19 @@ async def sender_task(queue, writer, db, status):
             
             # Save offset to RocksDB
             db.set(
-                f'{provider}_{collector}'.encode('utf-8'),
+                f'{provider}_{topic}'.encode('utf-8'),
                 offset.to_bytes(16, byteorder='big')
             )
+
+            # Mark the message as done
             queue.task_done()
 
         except Exception as e:
             logger.error("Error sending message over TCP", exc_info=True)
+            # Close the writer
+            writer.close()
+            await writer.wait_closed()
+            # Elevate the exception
             raise e
 
 
@@ -490,33 +524,14 @@ async def main():
     logging_task = asyncio.create_task(log_status(status, queue))
 
     # Create OpenBMP Socket with retry until timeout
-    timeout = int(os.getenv('OPENBMP_COLLECTOR_TIMEOUT', '30'))  # Default to 30 seconds if not set
-    host = os.getenv('OPENBMP_COLLECTOR_HOST')
-    port = int(os.getenv('OPENBMP_COLLECTOR_PORT'))
-
-    start_time = time.time()
-    while True:
-        try:
-            # Create a non-blocking socket
-            reader, writer = await asyncio.open_connection(host, port)
-            logger.info(f"Connected to OpenBMP collector at {host}:{port}")
-            break  # Success
-        except (OSError, socket.error) as e:
-            elapsed_time = time.time() - start_time
-            if elapsed_time >= timeout:
-                logger.error(f"Unable to connect to OpenBMP collector within {timeout} seconds")
-                raise Exception(f"Unable to connect to OpenBMP collector within {timeout} seconds") from e
-            else:
-                logger.warning(f"Connection failed, retrying in 10 seconds... ({elapsed_time:.1f}s elapsed)")
-                await asyncio.sleep(10)  # Wait before retrying
-        except Exception as e:
-            # Handle other exceptions
-            logger.error("An unexpected error occurred while trying to connect to OpenBMP collector", exc_info=True)
-            raise
+    collectors = [tuple(collector.split(':')) for collector in os.getenv('OPENBMP_COLLECTORS').split(',')]
 
     try:
-        # Create iterator
-        ready = asyncio.Event()
+        # Create readyness events
+        events = {
+            "route-views": asyncio.Event(),
+            "ris": asyncio.Event(),
+        }
 
         # Verify database initialization
         initialized = False
@@ -531,7 +546,8 @@ async def main():
         if initialized:
             # Everything is initialized
             logger.info("Intact offset database, starting tasks...")
-            ready.set()
+            events['route-views'].set()
+            events['ris'].set()
 
         # HACK: For Route Views, we need to manually fetch the latest RIBs
         rv_rib_urls = []
@@ -550,30 +566,29 @@ async def main():
             latest_rib = soup.find_all('a')[-1].text
             rv_rib_urls.append(f"{index}{latest_rib}")
 
-        # Start tasks independently for maximum throughput
-        await asyncio.gather(
-            # Route Views RIB Consumer
-            rib_task(queue, status, list(zip([f"{i}.routeviews.org" for i in rv_collectors], rv_rib_urls)), 'route-views', ready),
-            # RIS RIB Consumer
-            rib_task(queue, status, list(zip([f"{i}.ripe.net" for i in ris_collectors], [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', ready),
-            # Route Views Kafka Consumer
-            kafka_task(rv_consumer, [f'bmp.rv.routeviews.{i}' for i in rv_collectors], queue, db, status, BATCH_SIZE, 'route-views', ready),
-            # RIS Kafka Consumer
-            kafka_task(ris_consumer, ['ris-live'], queue, db, status, BATCH_SIZE, 'ris', ready),
-            # Sender
-            sender_task(queue, writer, db, status),
+        # Create tasks list starting with RIB and Kafka consumers
+        tasks = [
+            # RIB Consumers
+            rib_task(queue, status, list(zip([f"{i}.routeviews.org" for i in rv_collectors], rv_rib_urls)), 'route-views', events),
+            rib_task(queue, status, list(zip([f"{i}.ripe.net" for i in ris_collectors], [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', events),
+            # Kafka Consumers
+            kafka_task(rv_consumer, [f'bmp.rv.routeviews.{i}' for i in rv_collectors], queue, db, status, BATCH_SIZE, 'route-views', events),
+            kafka_task(ris_consumer, ['ris-live'], queue, db, status, BATCH_SIZE, 'ris', events),
             # Logging
             logging_task
-        )
+        ]
+
+        # Add a sender task for each collector
+        for host, port in collectors:
+            tasks.append(sender_task(queue, host, port, db, status))
+
+        # Start all tasks
+        await asyncio.gather(*tasks)
     except Exception as e:
         logger.error("Fatal error", exc_info=True)
     finally:
         # Close the RocksDB database
         db.close()
-
-        # Close the writer
-        writer.close()
-        await writer.wait_closed()
         
         # Cancel the logging task when exiting
         logging_task.cancel()
