@@ -444,9 +444,9 @@ async def kafka_task(consumer, timestamps, topics, queue, db, status, batch_size
             for message in messages:
                 await queue.put((message, msg.offset(), provider, topic))
 
-async def sender_task(queue, host, port, db, status):
+def sender_task(queue, host, port, db, status):
     """
-    Task to transmit messages from the queue to the TCP socket.
+    Synchronous task to transmit messages from the queue to the TCP socket.
     Only updates offset in RocksDB once message is successfully sent.
 
     Args:
@@ -456,55 +456,35 @@ async def sender_task(queue, host, port, db, status):
         db (rocksdbpy.DB): The RocksDB database to store the offset.
         status (dict): The status dictionary to update the bytes sent counter.
     """
-    # Establish connection to OpenBMP collector
-    timeout = 60 # 1 minute timeout
-    start_time = time.time()
-    while True:
-        try:
-            # Create a non-blocking socket
-            _, writer = await asyncio.open_connection(host, port)
+    # Establish a blocking TCP connection
+    try:
+        with socket.create_connection((host, port), timeout=60) as sock:
             logger.info(f"Connected to OpenBMP collector at {host}:{port}")
-            break  # Success
-        except (OSError, socket.error) as e:
-            elapsed_time = time.time() - start_time
-            if elapsed_time >= timeout:
-                logger.error(f"Unable to connect to OpenBMP collector within {timeout} seconds")
-                raise Exception(f"Unable to connect to OpenBMP collector within {timeout} seconds") from e
-            else:
-                logger.warning(f"Connection failed, retrying in 10 seconds... ({elapsed_time:.1f}s elapsed)")
-                await asyncio.sleep(10)  # Wait before retrying
-        except Exception as e:
-            # Handle other exceptions
-            logger.error("An unexpected error occurred while trying to connect to OpenBMP collector", exc_info=True)
-            raise
 
-    # Transmit messages to OpenBMP collector
-    while True:
-        message, offset, provider, topic = await queue.get()
+            while True:
+                try:
+                    message, offset, provider, topic = queue.get_nowait()  # Non-blocking get
+                    sock.sendall(message)
+                    status['bytes_sent'] += len(message)
 
-        try:
-            # Send the message over TCP
-            writer.write(message)
-            await writer.drain()
-            status['bytes_sent'] += len(message)
-            
-            # Save offset to RocksDB
-            db.set(
-                f'{provider}_{topic}'.encode('utf-8'),
-                offset.to_bytes(16, byteorder='big')
-            )
+                    # Save offset to RocksDB
+                    db.set(
+                        f'{provider}_{topic}'.encode('utf-8'),
+                        offset.to_bytes(16, byteorder='big')
+                    )
 
-            # Mark the message as done
-            queue.task_done()
+                    # Mark the message as done
+                    queue.task_done()
 
-        except Exception as e:
-            logger.error("Error sending message over TCP", exc_info=True)
-            # Close the writer
-            writer.close()
-            await writer.wait_closed()
-            # Elevate the exception
-            raise e
+                except asyncio.QueueEmpty:
+                    # If the queue is empty, let the loop rest a bit
+                    time.sleep(0.1)
+                except Exception as e:
+                    logger.error("Error sending message over TCP", exc_info=True)
 
+    except Exception as e:
+        logger.error("Socket connection failed, exiting...", exc_info=True)
+        raise e
 
 async def main():
     """
@@ -561,6 +541,7 @@ async def main():
 
     # Create OpenBMP Socket with retry until timeout
     collectors = [tuple(collector.split(':')) for collector in os.getenv('OPENBMP_COLLECTORS').split(',')]
+    logger.info(f"Found {len(collectors)} collectors: {collectors}")
 
     # Create a ThreadPoolExecutor for sender tasks
     executor = ThreadPoolExecutor(max_workers=len(collectors))
@@ -575,8 +556,8 @@ async def main():
         # Verify database initialization
         initialized = False
 
-        for _, value in db.iterator():
-            if value == b'\x00':
+        for key, value in db.iterator():
+            if value == b'\x00' * 16:
                 # RIB Injection failed, detected unexpected null offset
                 raise Exception("RIB Injection failed, data may be corrupted, exiting...")
             else:
@@ -619,13 +600,10 @@ async def main():
         ]
 
         # Add a multithreaded sender task for each collector
+        # Create tasks for all sender_task instances in separate threads
+        loop = asyncio.get_running_loop()
         for host, port in collectors:
-            tasks.append(
-                asyncio.to_thread(
-                    sender_task,
-                    queue, host, port, db, status
-                )
-            )
+            loop.run_in_executor(executor, sender_task, queue, host, port, db, status)
 
         # Start all tasks
         await asyncio.gather(*tasks)
