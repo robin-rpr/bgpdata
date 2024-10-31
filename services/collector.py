@@ -523,7 +523,7 @@ async def main():
     This script will be able to recover gracefully through the use of RocksDB.
     """
 
-    QUEUE_SIZE = 10000000 # Number of messages to queue to the OpenBMP collector
+    QUEUE_SIZE = 10000000 # Number of messages to queue to the OpenBMP collector (1M is ~1GB Memory)
     BATCH_SIZE = 10000    # Number of messages to fetch at once from Kafka
 
     # Wait for 10 seconds before starting (avoids self-inflicted dos attacks)
