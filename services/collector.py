@@ -24,7 +24,6 @@ import queue as queueio
 from io import BytesIO
 import threading
 import rocksdbpy
-import tempfile
 import fastavro
 import requests
 import logging
@@ -288,12 +287,9 @@ def rib_task(queue, status, timestamps, collectors, provider, events):
 
             while True:
                 try:
-                    # Create a temporary directory
-                    temp_dir = tempfile.TemporaryDirectory()
-
                     # Parse the RIB Data Dump via BGPKit
                     # Learn more at https://bgpkit.com/
-                    parser = bgpkit.Parser(url=url, cache_dir=temp_dir)
+                    parser = bgpkit.Parser(url=url)
 
                     for elem in parser:
                         # Update the timestamp if it's the freshest
