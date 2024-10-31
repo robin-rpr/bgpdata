@@ -559,7 +559,7 @@ async def main():
 
     # Verify that the OPENBMP_COLLECTORS environment variable is set
     if collectors is None:
-        raise Exception("OPENBMP_COLLECTORS environment variable is not set, exiting...")
+        raise Exception("OPENBMP_COLLECTORS environment variable is not set")
 
     # Create a ThreadPoolExecutor for sender tasks
     executor = ThreadPoolExecutor(max_workers=4+len(collectors))
