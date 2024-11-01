@@ -282,7 +282,7 @@ def rib_task(queue, db, status, timestamps, collectors, provider, events):
     logger.info(f"Beginning RIB Injection from {provider} collectors...")
 
     # Mark the RIBs injection as started
-    db.put(b'injection_started', b'\x01')
+    db.set(b'injection_started', b'\x01')
     
     try:
         for host, url in collectors:
@@ -453,7 +453,7 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
                     events[key].wait()
 
             # Mark the RIBs injection as fulfilled
-            db.put(b'injection_ended', b'\x01')
+            db.set(b'injection_ended', b'\x01')
 
     # Poll messages from Kafka
     while True:
@@ -569,7 +569,7 @@ def sender_task(queue, host, port, db, status):
                     if partition != -1:
                         # Save offset to RocksDB only if it's from Kafka
                         key = f'{topic}_{partition}'.encode('utf-8')
-                        db.put(key, offset.to_bytes(16, byteorder='big'))
+                        db.set(key, offset.to_bytes(16, byteorder='big'))
 
                     # Mark the message as done
                     queue.task_done()
