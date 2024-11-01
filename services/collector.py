@@ -157,9 +157,9 @@ async def logging_task(status, queue):
 
     Args:
         status (dict): A dictionary containing the following keys:
-            - timestamp (datetime): The most recent timestamp of the messages.
             - time_lag (timedelta): The current time lag of the messages.
             - bytes_sent (int): The number of bytes sent since the last log.
+            - activity (str): The current activity of the collector.
         queue (queueio.Queue): The queue containing the messages to send.
     """
     while True:
@@ -207,7 +207,10 @@ def rib_task(queue, db, status, timestamps, collectors, provider, events):
     Args:
         queue (queueio.Queue): The queue to add the messages to.
         db (rocksdbpy.DB): The RocksDB database.
-        status (dict): The status dictionary to update the time lag.
+        status (dict): A dictionary containing the following keys:
+            - time_lag (timedelta): The current time lag of the messages.
+            - bytes_sent (int): The number of bytes sent since the last log.
+            - activity (str): The current activity of the collector.
         timestamps (dict): A dictionary containing the latest timestamps of the RIBs.
         collectors (list): A list of tuples containing the host and URL of the RIB Data Dumps.
         provider (str): The provider of the MRT Data Dumps.
@@ -313,7 +316,10 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
         topics (list): A list of topics to subscribe to.
         queue (queueio.Queue): The queue to add the messages to.
         db (rocksdbpy.DB): The RocksDB database.
-        status (dict): The status dictionary to update the time lag.
+        status (dict): A dictionary containing the following keys:
+            - time_lag (timedelta): The current time lag of the messages.
+            - bytes_sent (int): The number of bytes sent since the last log.
+            - activity (str): The current activity of the collector.
         batch_size (int): Number of messages to fetch at once.
         provider (str): The provider of the messages.
         events (dict): A dictionary containing the following keys:
@@ -520,7 +526,10 @@ def sender_task(queue, host, port, db, status):
         host (str): The host of the OpenBMP collector.
         port (int): The port of the OpenBMP collector.
         db (rocksdbpy.DB): The RocksDB database to store the offset.
-        status (dict): The status dictionary to update the bytes sent counter.
+        status (dict): A dictionary containing the following keys:
+            - time_lag (timedelta): The current time lag of the messages.
+            - bytes_sent (int): The number of bytes sent since the last log.
+            - activity (str): The current activity of the collector.
     """
     # Establish a blocking TCP connection
     try:
