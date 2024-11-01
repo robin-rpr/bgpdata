@@ -397,8 +397,8 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
         # Define a time delta (e.g., 5 hours)
         time_delta = timedelta(hours=5)
 
-        # We need to keep track of the oldest timestamps of the topics
-        # HACK: Why? In case we have multiple collector hosts on a single topic (e.g. RIS).
+        # Keep track of the oldest timestamp for each topic
+        # Why? In case multiple collectors stream to the same topic
         oldest_timestamps = {}
 
         for host, topic in collectors:
@@ -406,7 +406,7 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
             if host not in timestamps:
                 raise Exception(f"Attempted to provision {host} but it's unknown")
             
-            # HACK: Assure the oldest timestamp for the topic (see explanation above)
+            # Assure the oldest timestamp for the topic (see comment above)
             oldest_timestamps[topic] = min(oldest_timestamps.get(topic, timestamps[host]), timestamps[host])
             
             # Get the timestamp of the recorded RIB
