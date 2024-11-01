@@ -402,7 +402,7 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
                     # Skip the raw binary header (we don't need the fields)
                     value = value[76 + struct.unpack("!H", value[54:56])[0] + struct.unpack("!H", value[72:74])[0]:]
 
-                    # TODO (1): Skip messages before the ingested collector's RIB.
+                    # TODO (1): Skip messages from unknown collectors.
 
                     # TODO (2): Parse the message and replace the peer_distinguisher with our own hash representation
                     #           Of the Route Views Collector name (SHA256) through the BMPv3.construct() function (e.g. the host).
@@ -424,9 +424,10 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
                     timestamp = parsed['timestamp'] / 1000  # Cast from int to datetime float
                     host = parsed['host'] # Extract Host
 
-                    # Check if the collector is known
+                    # Skip unknown collectors
+                    # TODO: We should probably log this, but not as an error, and not for every message
                     if host not in timestamps:
-                        raise Exception(f"Unknown collector {host}")
+                        continue
                     
                     # Check if the RIB injection for this collector is corrupted
                     if timestamps[host] == -1:
