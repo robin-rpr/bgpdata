@@ -58,8 +58,12 @@ routeviews_consumer_conf = {
     'bootstrap.servers': 'stream.routeviews.org:9092',
     'group.id': f"bgpdata-{hostname}",
     'partition.assignment.strategy': 'roundrobin',
-    'enable.auto.commit': False,  # Disable automatic offset commit
+    'enable.auto.commit': False,
     'auto.offset.reset': 'earliest',
+    'security.protocol': 'SASL_SSL',
+    'sasl.mechanism': 'PLAIN',
+    'sasl.username': os.getenv('ROUTEVIEWS_USERNAME'),
+    'sasl.password': os.getenv('ROUTEVIEWS_PASSWORD'),
 }
 
 # RIS Kafka Consumer configuration
@@ -67,13 +71,12 @@ ris_consumer_conf = {
     'bootstrap.servers': 'node01.kafka-pub.ris.ripe.net:9094,node02.kafka-pub.ris.ripe.net:9094,node03.kafka-pub.ris.ripe.net:9094',
     'group.id': f"bgpdata-{hostname}",
     'partition.assignment.strategy': 'roundrobin',
-    'enable.auto.commit': False,  # Disable automatic offset commit
+    'enable.auto.commit': False,
     'auto.offset.reset': 'earliest',
-    # SASL Authentication (required for RIS Kafka)
     'security.protocol': 'SASL_SSL',
     'sasl.mechanism': 'PLAIN',
-    'sasl.username': 'public',
-    'sasl.password': 'public',
+    'sasl.username': os.getenv('RIS_USERNAME'),
+    'sasl.password': os.getenv('RIS_PASSWORD'),
 }
 
 # RIS Avro Encoding schema
@@ -363,10 +366,6 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
             topic_partitions = [TopicPartition(
                 topic, p, target_timestamp_ms) for p in partitions]
 
-            # Log everything out
-            logger.info(
-                f"Partitions: {topic_partitions}, Target timestamp: {target_timestamp_ms}, Topics: {topics}, Partitions Normal: {partitions}")
-
             # Query Kafka for the offsets
             offsets = consumer.offsets_for_times(topic_partitions, timeout=10)
 
@@ -483,8 +482,8 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
                         marshal['community'],
                         marshal['announcements'],
                         marshal['withdrawals'],
-                        marshal['state'],
-                        marshal['med']
+                        marshal.get('state', None),
+                        marshal.get('med', None)
                     ))
 
             # Update the approximated time lag preceived by the consumer
@@ -563,9 +562,6 @@ async def main():
     QUEUE_SIZE = 10000000
     BATCH_SIZE = 10000    # Number of messages to fetch at once from Kafka
 
-    # Wait for 10 seconds before starting (avoids self-inflicted dos attacks)
-    time.sleep(10)
-
     # Define shutdown function
     def shutdown(signum, frame):
         # Log the shutdown signal and frame information
@@ -593,14 +589,6 @@ async def main():
         'bytes_sent': 0,                       # Initialize bytes sent counter
         'activity': "INITIALIZING",            # Initialize activity
     }
-
-    # Log the collectors
-    logger.info(f"Route Views collectors: {routeviews_collectors}")
-    logger.info(f"RIS collectors: {ris_collectors}")
-    logger.info(f"OpenBMP collectors: {openbmp_collectors}")
-
-    if (len(routeviews_collectors) == 0 and len(ris_collectors) == 0) or len(openbmp_collectors) == 0:
-        raise Exception("No collectors specified, exiting...")
 
     # Keep track of freshest timestamps of the RIBs
     timestamps = {}
@@ -644,13 +632,13 @@ async def main():
 
         # HACK: For Route Views, we need to manually fetch the latest RIBs
         rv_rib_urls = []
-        for i in routeviews_collectors:
-            if i == "route-views2":
+        for host, _ in routeviews_collectors:
+            if host == "route-views2":
                 # Route Views 2 is hosted on the root folder
                 index = f"https://archive.routeviews.org/bgpdata/{datetime.now().year}.{datetime.now().month}/RIBS/"
             else:
                 # Construct the URL for the latest RIBs
-                index = f"https://archive.routeviews.org/{i}/bgpdata/{datetime.now().year}.{datetime.now().month}/RIBS/"
+                index = f"https://archive.routeviews.org/{host}/bgpdata/{datetime.now().year}.{datetime.now().month}/RIBS/"
 
             # Crawl the index page to find the latest RIB file (with beautifulsoup its also a apache file server)
             response = requests.get(index, timeout=30)
@@ -663,18 +651,16 @@ async def main():
         futures = []
 
         def handle_future(future):
-            try:
                 exception = future.exception()
                 if exception:
-                    # Log and re-raise to propagate the exception
-                    logger.error("Exception in future", exc_info=True)
-                    raise exception
-            except Exception as e:
-                # Force the main loop to recognize this exception
-                loop.call_exception_handler({
-                    'message': 'Unhandled exception in future',
-                    'exception': e,
-                })
+                    # Close the RocksDB database
+                    db.close()
+
+                    # Shutdown the ThreadPoolExecutor
+                    executor.shutdown()
+
+                    # Cancel the logging task when exiting
+                    task.cancel()
 
         # RIB Tasks
         if len(routeviews_collectors) > 0:
@@ -687,7 +673,7 @@ async def main():
         if len(ris_collectors) > 0:  
             # Only if there are RIS collectors
             future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip(list(set(
-                [f"{host}.ripe.net" for host, _ in ris_collectors])), [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', events)
+                [f"{host}.ripe.net" for host in ris_collectors])), [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', events)
             future.add_done_callback(handle_future)
             futures.append(asyncio.wrap_future(future))
 
@@ -701,7 +687,7 @@ async def main():
 
         if len(ris_collectors) > 0:
             # Only if there are RIS collectors
-            future = loop.run_in_executor(executor, kafka_task, ris_consumer_conf, timestamps, list(zip([f"{host}.ripe.net" for host, _ in ris_collectors],
+            future = loop.run_in_executor(executor, kafka_task, ris_consumer_conf, timestamps, list(zip([f"{host}.ripe.net" for host in ris_collectors],
                 ['ris-live' for _ in ris_collectors])), ['ris-live'], queue, db, status, BATCH_SIZE, 'ris', events)
             future.add_done_callback(handle_future)
             futures.append(asyncio.wrap_future(future))

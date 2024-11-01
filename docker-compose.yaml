@@ -89,24 +89,26 @@ services:
             OPENBMP_COLLECTORS: openbmp-collector:5000
             # List of Route Views collectors
             # https://www.routeviews.org/
-            ROUTEVIEWS_COLLECTORS: |
-                amsix.ams:293,
-                amsix.ams:1103,
-                amsix.ams:1140,
-                amsix.ams:3320,
-                amsix.ams:6204,
-                amsix.ams:6777,
-                amsix.ams:20253,
-                amsix.ams:28283,
-                amsix.ams:34177,
-                amsix.ams:37271,
-                amsix.ams:39120,
-                amsix.ams:49544,
-                amsix.ams:56987,
-                amsix.ams:213241,
-                amsix.ams:271253,
-                amsix.ams:328832,
-                amsix.ams:398465,
+            # ROUTEVIEWS_USERNAME: public
+            # ROUTEVIEWS_PASSWORD: public
+            # ROUTEVIEWS_COLLECTORS: |
+            #    amsix.ams:293,
+            #    amsix.ams:1103,
+            #    amsix.ams:1140,
+            #    amsix.ams:3320,
+            #    amsix.ams:6204,
+            #    amsix.ams:6777,
+            #    amsix.ams:20253,
+            #    amsix.ams:28283,
+            #    amsix.ams:34177,
+            #    amsix.ams:37271,
+            #    amsix.ams:39120,
+            #    amsix.ams:49544,
+            #    amsix.ams:56987,
+            #    amsix.ams:213241,
+            #    amsix.ams:271253,
+            #    amsix.ams:328832,
+            #    amsix.ams:398465
             #    amsix:1103,
             #    amsix:3214,
             #    amsix:3399,
@@ -536,12 +538,14 @@ services:
             #    wide:2497,
             #    wide:2500,
             #    wide:2516,
-            #    wide:7500,
+            #    wide:7500
             # List of RIPE Route Collectors
             # https://ris.ripe.net
+            RIS_USERNAME: public
+            RIS_PASSWORD: public
             RIS_COLLECTORS: |
                 rrc00,
-            #    rrc01,
+                rrc01
             #    rrc03,
             #    rrc04,
             #    rrc05,
