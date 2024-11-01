@@ -63,10 +63,10 @@ services:
             retries: 3
             start_period: 40s
         environment:
-            - POSTGRESQL_DATABASE=postgresql+asyncpg://core:core@core-db:5432/default
-            - POSTMARK_API_KEY=your-postmark-api-key
-            - SECRET_KEY=your-flask-secret-key
-            - ENVIRONMENT=development
+            POSTGRESQL_DATABASE: postgresql+asyncpg://core:core@core-db:5432/default
+            POSTMARK_API_KEY: your-postmark-api-key
+            SECRET_KEY: your-flask-secret-key
+            ENVIRONMENT: development
         ports:
             - "8080:8080"
         depends_on:
@@ -171,10 +171,11 @@ services:
     #    build: .
     #    container_name: core-aggregator
     #    environment:
-    #        - POSTGRESQL_DATABASE=postgresql+asyncpg://core:core@core-db:5432/default
-    #        - REDIS_DATABASE=redis://redis:6379
+    #        POSTGRESQL_DATABASE: postgresql+asyncpg://core:core@core-db:5432/default
     #    depends_on:
     #        core-db:
+    #            condition: service_healthy
+    #        openbmp-db:
     #            condition: service_healthy
     #    working_dir: /app
     #    volumes:
@@ -239,9 +240,9 @@ services:
         command: >
             -c max_wal_size=10GB
         environment:
-            - POSTGRES_PASSWORD=openbmp
-            - POSTGRES_USER=openbmp
-            - POSTGRES_DB=openbmp
+            POSTGRES_PASSWORD: openbmp
+            POSTGRES_USER: openbmp
+            POSTGRES_DB: openbmp
         
     openbmp-app:
         container_name: openbmp-app
@@ -267,35 +268,35 @@ services:
         volumes:
             - ./config:/config
         environment:
-            - MEM=3                                           # Set memory to at least 2GB but ideally 4GB
-            - KAFKA_FQDN=openbmp-kafka:29092
-            - RPKI_URL=https://rpki.cloudflare.com/rpki.json  # define the URL to retrieve json endoed RPKI data
-            - RPKI_PASS=None
-            - RPKI_USER=None
-            - ENABLE_RPKI=1                                   # 1 enables, 0 disables RPKI sync
-            - ENABLE_IRR=1                                    # 1 enables, 0 disables IRR sync
-            - ENABLE_DBIP=1                                   # 1 enables, 0 disables DBIP import
-            - POSTGRES_REPORT_WINDOW='8 minute'               # default POSTGRESS window to select when building
-                                                              #   summary tables. For deployments that absorb large
-                                                              #   bursts increase the value, ex 60 minute
-            - POSTGRES_PASSWORD=openbmp
-            - POSTGRES_USER=openbmp
-            - POSTGRES_DB=openbmp
-            - POSTGRES_HOST=openbmp-db
-            - POSTGRES_PORT=5432
-            - POSTGRES_DROP_peer_event_log='1 month'
-            - POSTGRES_DROP_stat_reports='1 day'
-            - POSTGRES_DROP_ip_rib_log='1 day'
-            - POSTGRES_DROP_alerts='1 day'
-            - POSTGRES_DROP_ls_nodes_log='2 days'
-            - POSTGRES_DROP_ls_links_log='2 days'
-            - POSTGRES_DROP_ls_prefixes_log='2 days'
-            - POSTGRES_DROP_stats_chg_byprefix='1 day'
-            - POSTGRES_DROP_stats_chg_byasn='1 day'
-            - POSTGRES_DROP_stats_chg_bypeer='1 day'
-            - POSTGRES_DROP_stats_ip_origins='1 day'
-            - POSTGRES_DROP_stats_peer_rib='1 day'
-            - POSTGRES_DROP_stats_peer_update_counts='1 day'
+            MEM: 3                                           # Set memory to at least 2GB but ideally 4GB
+            KAFKA_FQDN: openbmp-kafka:29092
+            RPKI_URL: https://rpki.cloudflare.com/rpki.json  # define the URL to retrieve json endoed RPKI data
+            RPKI_PASS: None
+            RPKI_USER: None
+            ENABLE_RPKI: 1                                   # 1 enables, 0 disables RPKI sync
+            ENABLE_IRR: 1                                    # 1 enables, 0 disables IRR sync
+            ENABLE_DBIP: 1                                   # 1 enables, 0 disables DBIP import
+            POSTGRES_REPORT_WINDOW: '8 minute'               # default POSTGRESS window to select when building
+                                                             #   summary tables. For deployments that absorb large
+                                                             #   bursts increase the value, ex 60 minute
+            POSTGRES_PASSWORD: openbmp
+            POSTGRES_USER: openbmp
+            POSTGRES_DB: openbmp
+            POSTGRES_HOST: openbmp-db
+            POSTGRES_PORT: 5432
+            POSTGRES_DROP_peer_event_log: '1 month'
+            POSTGRES_DROP_stat_reports: '1 day'
+            POSTGRES_DROP_ip_rib_log: '1 day'
+            POSTGRES_DROP_alerts: '1 day'
+            POSTGRES_DROP_ls_nodes_log: '2 days'
+            POSTGRES_DROP_ls_links_log: '2 days'
+            POSTGRES_DROP_ls_prefixes_log: '2 days'
+            POSTGRES_DROP_stats_chg_byprefix: '1 day'
+            POSTGRES_DROP_stats_chg_byasn: '1 day'
+            POSTGRES_DROP_stats_chg_bypeer: '1 day'
+            POSTGRES_DROP_stats_ip_origins: '1 day'
+            POSTGRES_DROP_stats_peer_rib: '1 day'
+            POSTGRES_DROP_stats_peer_update_counts: '1 day'
 
     openbmp-collector:
         container_name: openbmp-collector
@@ -314,7 +315,7 @@ services:
         volumes:
             - ./config:/config
         environment:
-            - KAFKA_FQDN=openbmp-kafka:29092
+            KAFKA_FQDN: openbmp-kafka:29092
 
     openbmp-whois:
         container_name: openbmp-whois
@@ -338,11 +339,11 @@ services:
         ports:
             - "4300:43"
         environment:
-            - POSTGRES_PASSWORD=openbmp
-            - POSTGRES_USER=openbmp
-            - POSTGRES_DB=openbmp
-            - POSTGRES_HOST=openbmp-db
-            - POSTGRES_PORT=5433
+            POSTGRES_PASSWORD: openbmp
+            POSTGRES_USER: openbmp
+            POSTGRES_DB: openbmp
+            POSTGRES_HOST: openbmp-db
+            POSTGRES_PORT: 5433
 
     openbmp-zookeeper:
         container_name: openbmp-zookeeper
@@ -404,10 +405,10 @@ services:
             - ./grafana:/var/lib/grafana
             - ./grafana/provisioning/:/etc/grafana/provisioning/
         environment:
-            - GF_SECURITY_ADMIN_PASSWORD=openbmp
-            - GF_AUTH_ANONYMOUS_ENABLED=true
-            - GF_USERS_HOME_PAGE=d/obmp-home/obmp-home
-            - GF_INSTALL_PLUGINS=agenty-flowcharting-panel,grafana-piechart-panel,grafana-worldmap-panel,grafana-simple-json-datasource,vonage-status-panel
+            GF_SECURITY_ADMIN_PASSWORD: openbmp
+            GF_AUTH_ANONYMOUS_ENABLED: true
+            GF_USERS_HOME_PAGE: d/obmp-home/obmp-home
+            GF_INSTALL_PLUGINS: agenty-flowcharting-panel,grafana-piechart-panel,grafana-worldmap-panel,grafana-simple-json-datasource,vonage-status-panel
 
 # Define volumes
 volumes:
