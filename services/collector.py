@@ -45,12 +45,12 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(leve
 logger = logging.getLogger(__name__)
 
 # Get list of collectors
-routeviews_collectors = [collector.strip() for collector in (os.getenv('ROUTEVIEWS_COLLECTORS') or '').split(',')]
+routeviews_collectors = [tuple(collector.strip().split(':')) for collector in (os.getenv('ROUTEVIEWS_COLLECTORS') or '').split(',')]
 ris_collectors = [collector.strip() for collector in (os.getenv('RIS_COLLECTORS') or '').split(',')]
 openbmp_collectors = [tuple(collector.split(':')) for collector in (os.getenv('OPENBMP_COLLECTORS') or '').split(',')]
 
 # Route Views Kafka Consumer configuration
-rv_consumer_conf = {
+routeviews_consumer_conf = {
     'bootstrap.servers': 'stream.routeviews.org:9092',
     'group.id': f"bgpdata-{hostname}",
     'partition.assignment.strategy': 'roundrobin',
@@ -341,6 +341,9 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
             
             # Create TopicPartition instances with the target timestamp
             topic_partitions = [TopicPartition(topic, p, target_timestamp_ms) for p in partitions]
+
+            # Log everything out
+            logger.info(f"Partitions: {topic_partitions}, Target timestamp: {target_timestamp_ms}, Topics: {topics}, Partitions Normal: {partitions}")
             
             # Query Kafka for the offsets
             offsets = consumer.offsets_for_times(topic_partitions, timeout=10)
@@ -564,7 +567,7 @@ async def main():
     logger.info(f"RIS collectors: {ris_collectors}")
     logger.info(f"OpenBMP collectors: {openbmp_collectors}")
 
-    if len(routeviews_collectors) == 0 or len(ris_collectors) == 0 or len(openbmp_collectors) == 0:
+    if (len(routeviews_collectors) == 0 and len(ris_collectors) == 0) or len(openbmp_collectors) == 0:
         raise Exception("No collectors specified, exiting...")
 
     # Keep track of freshest timestamps of the RIBs
@@ -620,38 +623,52 @@ async def main():
             latest_rib = soup.find_all('a')[-1].text
             rv_rib_urls.append(f"{index}{latest_rib}")
 
-        async def handle_future(future):
+        # Initialize futures
+        futures = []
+        def handle_future(future):
             try:
-                await asyncio.wrap_future(future)
+                exception = future.exception()
+                if exception:
+                    # Log and re-raise to propagate the exception
+                    logger.error("Exception in future", exc_info=True)
+                    raise exception
             except Exception as e:
-                logger.error("Thread pool error", exc_info=True)
-                raise e  # Re-raise to propagate
+                # Force the main loop to recognize this exception
+                loop.call_exception_handler({
+                    'message': 'Unhandled exception in future',
+                    'exception': e,
+                })
 
         # RIB Tasks
         if len(routeviews_collectors) > 0: # Only if there are Route Views collectors
-            future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip([f"{i}.routeviews.org" for i in routeviews_collectors], rv_rib_urls)), 'route-views', events)
+            future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip([f"{host}.routeviews.org" for host, _ in routeviews_collectors], rv_rib_urls)), 'route-views', events)
             future.add_done_callback(handle_future)
+            futures.append(asyncio.wrap_future(future))
 
         if len(ris_collectors) > 0: # Only if there are RIS collectors
-            future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip([f"{i}.routeviews.org" for i in routeviews_collectors], [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', events)
+            future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip([f"{host}.ripe.net" for host, _ in routeviews_collectors], [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', events)
             future.add_done_callback(handle_future)
+            futures.append(asyncio.wrap_future(future))
 
         # Kafka Tasks
         if len(routeviews_collectors) > 0: # Only if there are Route Views collectors
-            future = loop.run_in_executor(executor, kafka_task, rv_consumer_conf, timestamps, list(zip([f"{i}.routeviews.org" for i in routeviews_collectors], [f'bmp.rv.routeviews.{i}' for i in routeviews_collectors])), [f'bmp.rv.routeviews.{i}' for i in routeviews_collectors], queue, db, status, BATCH_SIZE, 'route-views', events)
+            future = loop.run_in_executor(executor, kafka_task, routeviews_consumer_conf, timestamps, list(zip([f"{host}.routeviews.org" for host, _ in routeviews_collectors], [f'routeviews.{host}.{peer}.bmp_raw' for host, peer in routeviews_collectors])), [f'routeviews.{host}.{peer}.bmp_raw' for host, peer in routeviews_collectors], queue, db, status, BATCH_SIZE, 'route-views', events)
             future.add_done_callback(handle_future)
+            futures.append(asyncio.wrap_future(future))
 
         if len(ris_collectors) > 0: # Only if there are RIS collectors
-            future = loop.run_in_executor(executor, kafka_task, ris_consumer_conf, timestamps, list(zip([f"{i}.routeviews.org" for i in routeviews_collectors], ['ris-live' for _ in ris_collectors])), ['ris-live'], queue, db, status, BATCH_SIZE, 'ris', events)
+            future = loop.run_in_executor(executor, kafka_task, ris_consumer_conf, timestamps, list(zip([f"{host}.ripe.net" for host, _ in routeviews_collectors], ['ris-live' for _ in ris_collectors])), ['ris-live'], queue, db, status, BATCH_SIZE, 'ris', events)
             future.add_done_callback(handle_future)
+            futures.append(asyncio.wrap_future(future))
 
         # Sender Tasks
         for host, port in openbmp_collectors:
             future = loop.run_in_executor(executor, sender_task, queue, host, port, db, status)
             future.add_done_callback(handle_future)
+            futures.append(asyncio.wrap_future(future))
 
         # Keep the logging task and main loop alive
-        await asyncio.gather(task)
+        await asyncio.gather(task, *futures)
     except Exception as e:
         logger.error("Fatal error", exc_info=True)
     finally:
