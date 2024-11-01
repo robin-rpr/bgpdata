@@ -41,13 +41,17 @@ import os
 hostname = socket.gethostname()  # Get the machine's hostname
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Get list of collectors
-routeviews_collectors = [tuple(collector.strip().split(':')) for collector in (os.getenv('ROUTEVIEWS_COLLECTORS') or '').split(',')]
-ris_collectors = [collector.strip() for collector in (os.getenv('RIS_COLLECTORS') or '').split(',')]
-openbmp_collectors = [tuple(collector.split(':')) for collector in (os.getenv('OPENBMP_COLLECTORS') or '').split(',')]
+routeviews_collectors = [tuple(collector.strip().split(':')) for collector in (
+    os.getenv('ROUTEVIEWS_COLLECTORS') or '').split(',')]
+ris_collectors = [collector.strip() for collector in (
+    os.getenv('RIS_COLLECTORS') or '').split(',')]
+openbmp_collectors = [tuple(collector.split(':')) for collector in (
+    os.getenv('OPENBMP_COLLECTORS') or '').split(',')]
 
 # Route Views Kafka Consumer configuration
 routeviews_consumer_conf = {
@@ -79,31 +83,32 @@ ris_avro_schema = {
     "namespace": "net.ripe.ris.live",
     "fields": [
         {
-          "name": "type",
-          "type": {
-            "type": "enum",
-            "name": "MessageType",
-            "symbols": ["STATE", "OPEN", "UPDATE", "NOTIFICATION", "KEEPALIVE"],
-          },
+            "name": "type",
+            "type": {
+                "type": "enum",
+                "name": "MessageType",
+                "symbols": ["STATE", "OPEN", "UPDATE", "NOTIFICATION", "KEEPALIVE"],
+            },
         },
-        { "name": "timestamp", "type": "long" },
-        { "name": "host", "type": "string" },
-        { "name": "peer", "type": "bytes" },
+        {"name": "timestamp", "type": "long"},
+        {"name": "host", "type": "string"},
+        {"name": "peer", "type": "bytes"},
         {
-          "name": "attributes",
-          "type": { "type": "array", "items": "int" },
-          "default": [],
+            "name": "attributes",
+            "type": {"type": "array", "items": "int"},
+            "default": [],
         },
         {
-          "name": "prefixes",
-          "type": { "type": "array", "items": "bytes" },
-          "default": [],
+            "name": "prefixes",
+            "type": {"type": "array", "items": "bytes"},
+            "default": [],
         },
-        { "name": "path", "type": { "type": "array", "items": "long" }, "default": [] },
-        { "name": "ris_live", "type": "string" },
-        { "name": "raw", "type": "string" },
+        {"name": "path", "type": {"type": "array", "items": "long"}, "default": []},
+        {"name": "ris_live", "type": "string"},
+        {"name": "raw", "type": "string"},
     ],
 }
+
 
 def on_assign(consumer, partitions, db):
     """
@@ -121,26 +126,32 @@ def on_assign(consumer, partitions, db):
         if partitions[0].error:
             logger.error(f"Rebalance error: {partitions[0].error}")
         else:
-            logger.info(f"Assigned partitions: {[p.partition for p in partitions]}")
+            logger.info(
+                f"Assigned partitions: {[p.partition for p in partitions]}")
 
             # Set the offset for each partition
             for partition in partitions:
-                last_offset = db.get(f'{partition.topic}_{partition.partition}'.encode('utf-8')) or None
+                last_offset = db.get(
+                    f'{partition.topic}_{partition.partition}'.encode('utf-8')) or None
                 # If the offset is stored, set it
                 if last_offset is not None:
-                    partition.offset = int.from_bytes(last_offset, byteorder='big') + 1 # +1 because we start from the next message
-                    logger.info(f"Setting offset for partition {partition.partition} of {partition.topic} to {partition.offset}")
-            
+                    # +1 because we start from the next message
+                    partition.offset = int.from_bytes(
+                        last_offset, byteorder='big') + 1
+                    logger.info(
+                        f"Setting offset for partition {partition.partition} of {partition.topic} to {partition.offset}")
+
             # Assign the partitions to the consumer
             consumer.assign(partitions)
     except Exception as e:
         logger.error(f"Error handling assignment: {e}", exc_info=True)
 
+
 async def logging_task(status, queue):
     """
     Asynchronous task to periodically log the most recent timestamp, time lag, current poll interval, and consumption rate.
     This task runs within the main event loop.
-    
+
     Args:
         status (dict): A dictionary containing the following keys:
             - timestamp (datetime): The most recent timestamp of the messages.
@@ -154,7 +165,8 @@ async def logging_task(status, queue):
 
         # Compute kbps_counter
         bytes_sent = status['bytes_sent']
-        kbps_counter = (bytes_sent * 8) / seconds / 1000  # Convert bytes to kilobits per second
+        # Convert bytes to kilobits per second
+        kbps_counter = (bytes_sent * 8) / seconds / 1000
 
         if status['activity'] == "INITIALIZING":
             # Initializing
@@ -175,6 +187,7 @@ async def logging_task(status, queue):
         # Reset bytes_sent
         status['bytes_sent'] = 0
 
+
 def rib_task(queue, db, status, timestamps, collectors, provider, events):
     """
     Synchronous task to inject RIB messages from MRT Data Dumps into the queue.
@@ -194,14 +207,14 @@ def rib_task(queue, db, status, timestamps, collectors, provider, events):
     # If the event is set, the provider is already initialized, skip
     if events[f"{provider}_provision"].is_set():
         return
-    
+
     # Set the activity
     status['activity'] = "RIB_INJECTION"
     logger.info(f"Beginning RIB Injection from {provider} collectors...")
 
     # Mark the RIBs injection as started
     db.set(b'injection_started', b'\x01')
-    
+
     try:
         for host, url in collectors:
             logger.info(f"Injecting RIB from {provider} of {host} via {url}")
@@ -237,7 +250,8 @@ def rib_task(queue, db, status, timestamps, collectors, provider, events):
                             elem['origin'],
                             [
                                 # Only include compliant communities with 2 or 3 parts that are all valid integers
-                                [int(part) for part in comm.split(":")[1:] if part.isdigit()]
+                                [int(part) for part in comm.split(
+                                    ":")[1:] if part.isdigit()]
                                 for comm in (elem.get("communities") or [])
                                 if len(comm.split(":")) in {2, 3} and all(p.isdigit() for p in comm.split(":")[1:])
                             ],
@@ -254,11 +268,12 @@ def rib_task(queue, db, status, timestamps, collectors, provider, events):
 
                         # Add the messages to the batch
                         batch.extend(messages)
-                    
+
                     break  # Exit retry loop when successful
 
                 except Exception as e:
-                    logger.warning(f"Retrieving RIB from {provider} {host} via {url} failed, retrying...", exc_info=True)
+                    logger.warning(
+                        f"Retrieving RIB from {provider} {host} via {url} failed, retrying...", exc_info=True)
                     time.sleep(10)  # Wait 10 seconds before retrying
 
             # Add the messages to the queue
@@ -266,7 +281,8 @@ def rib_task(queue, db, status, timestamps, collectors, provider, events):
                 queue.put((message, 0, provider, host, -1))
 
     except Exception as e:
-        logger.error(f"Error injecting RIB from {provider} collectors: {e}", exc_info=True)
+        logger.error(
+            f"Error injecting RIB from {provider} collectors: {e}", exc_info=True)
         raise e
 
     events[f"{provider}_injection"].set()
@@ -307,7 +323,8 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
     consumer.subscribe(
         topics,
         on_assign=lambda c, p: on_assign(c, p, db),
-        on_revoke=lambda c, p: logger.info(f"Revoked partitions: {[part.partition for part in p]}")
+        on_revoke=lambda c, p: logger.info(
+            f"Revoked partitions: {[part.partition for part in p]}")
     )
 
     # If RIBs are injected but not yet provisioned
@@ -323,31 +340,36 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
         for host, topic in collectors:
             # Verify that the collector is known
             if host not in timestamps:
-                raise Exception(f"Attempted to provision {host} of {provider} but it's unknown")
-            
+                raise Exception(
+                    f"Attempted to provision {host} of {provider} but it's unknown")
+
             # Assure the oldest timestamp for the topic (see comment above)
-            oldest_timestamps[topic] = min(oldest_timestamps.get(topic, timestamps[host]), timestamps[host])
-            
+            oldest_timestamps[topic] = min(oldest_timestamps.get(
+                topic, timestamps[host]), timestamps[host])
+
             # Get the timestamp of the recorded RIB
             timestamp = datetime.fromtimestamp(oldest_timestamps[topic])
 
             # Calculate the target time
             target_time = timestamp - time_delta
-            target_timestamp_ms = int(target_time.timestamp() * 1000)  # Convert to milliseconds
+            # Convert to milliseconds
+            target_timestamp_ms = int(target_time.timestamp() * 1000)
 
             # Get metadata to retrieve all partitions for the topic
             metadata = consumer.list_topics(topic, timeout=10)
             partitions = metadata.topics[topic].partitions.keys()
-            
+
             # Create TopicPartition instances with the target timestamp
-            topic_partitions = [TopicPartition(topic, p, target_timestamp_ms) for p in partitions]
+            topic_partitions = [TopicPartition(
+                topic, p, target_timestamp_ms) for p in partitions]
 
             # Log everything out
-            logger.info(f"Partitions: {topic_partitions}, Target timestamp: {target_timestamp_ms}, Topics: {topics}, Partitions Normal: {partitions}")
-            
+            logger.info(
+                f"Partitions: {topic_partitions}, Target timestamp: {target_timestamp_ms}, Topics: {topics}, Partitions Normal: {partitions}")
+
             # Query Kafka for the offsets
             offsets = consumer.offsets_for_times(topic_partitions, timeout=10)
-            
+
             # Extract the found offsets
             found_offsets = []
             for tp in offsets:
@@ -357,13 +379,14 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
                     latest = consumer.get_watermark_offsets(tp)
                     tp.offset = latest[1]
                 found_offsets.append(tp)
-            
+
             # Assign the found offsets
             consumer.assign(found_offsets)
 
             # Log the assigned offsets
             for tp in found_offsets:
-                logger.info(f"Assigned topic {tp.topic} partition {tp.partition} to offset {tp.offset}")
+                logger.info(
+                    f"Assigned topic {tp.topic} partition {tp.partition} to offset {tp.offset}")
 
             # Mark Consumer as provisioned
             events[f"{provider}_provision"].set()
@@ -380,7 +403,7 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
     while True:
         # Poll a batch of messages
         msgs = consumer.consume(batch_size, timeout=0.1)
-        
+
         if not msgs:
             continue
 
@@ -403,7 +426,8 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
             match provider:
                 case 'route-views':
                     # Skip the raw binary header (we don't need the fields)
-                    value = value[76 + struct.unpack("!H", value[54:56])[0] + struct.unpack("!H", value[72:74])[0]:]
+                    value = value[76 + struct.unpack("!H", value[54:56])[
+                        0] + struct.unpack("!H", value[72:74])[0]:]
 
                     # TODO (1): Skip messages from unknown collectors.
 
@@ -423,19 +447,22 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
                     value = value[5:]
 
                     # Parse the Avro encoded exaBGP message
-                    parsed = fastavro.schemaless_reader(BytesIO(value), ris_avro_schema)
-                    timestamp = parsed['timestamp'] / 1000  # Cast from int to datetime float
-                    host = parsed['host'] # Extract Host
+                    parsed = fastavro.schemaless_reader(
+                        BytesIO(value), ris_avro_schema)
+                    # Cast from int to datetime float
+                    timestamp = parsed['timestamp'] / 1000
+                    host = parsed['host']  # Extract Host
 
                     # Skip unknown collectors
                     # TODO: We should probably log this, but not as an error, and not for every message
                     if host not in timestamps:
                         continue
-                    
+
                     # Check if the RIB injection for this collector is corrupted
                     if timestamps[host] == -1:
-                        raise Exception(f"RIB injection for {host} is corrupted, no MRT records ingested")
-                    
+                        raise Exception(
+                            f"RIB injection for {host} is corrupted, no MRT records ingested")
+
                     # Skip messages before the ingested collector's RIB or before the collector was seen
                     if timestamp > timestamps[host]:
                         # TODO: We are estimating the time gap between the message and the ingested RIB very statically,
@@ -448,7 +475,8 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
                         host,
                         marshal['peer'],
                         marshal['peer_asn'],
-                        marshal['timestamp'] / 1000, # Cast from int to datetime float
+                        # Cast from int to datetime float
+                        marshal['timestamp'] / 1000,
                         marshal['type'],
                         marshal['path'],
                         marshal['origin'],
@@ -458,12 +486,14 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
                         marshal['state'],
                         marshal['med']
                     ))
-                
+
             # Update the approximated time lag preceived by the consumer
-            status['time_lag'] = datetime.now() - datetime.fromtimestamp(timestamp)
+            status['time_lag'] = datetime.now(
+            ) - datetime.fromtimestamp(timestamp)
 
             for message in messages:
                 queue.put((message, msg.offset(), provider, topic, partition))
+
 
 def sender_task(queue, host, port, db, status):
     """
@@ -500,12 +530,12 @@ def sender_task(queue, host, port, db, status):
                     # If the queue is empty, let the loop rest a bit
                     time.sleep(0.1)
                 except Exception as e:
-                    logger.error("Error sending message over TCP", exc_info=True)
+                    logger.error(
+                        "Error sending message over TCP", exc_info=True)
 
     except Exception as e:
         logger.error("Socket connection failed, exiting...", exc_info=True)
         raise e
-    
 
 
 async def main():
@@ -529,7 +559,8 @@ async def main():
     This script will be able to recover gracefully through the use of RocksDB.
     """
 
-    QUEUE_SIZE = 10000000 # Number of messages to queue to the OpenBMP collector (1M is ~1GB Memory)
+    # Number of messages to queue to the OpenBMP collector (1M is ~1GB Memory)
+    QUEUE_SIZE = 10000000
     BATCH_SIZE = 10000    # Number of messages to fetch at once from Kafka
 
     # Wait for 10 seconds before starting (avoids self-inflicted dos attacks)
@@ -538,7 +569,8 @@ async def main():
     # Define shutdown function
     def shutdown(signum, frame):
         # Log the shutdown signal and frame information
-        logger.warning(f"Shutdown signal ({signum}) received, frame: {frame}, exiting...")
+        logger.warning(
+            f"Shutdown signal ({signum}) received, frame: {frame}, exiting...")
         # Raise an exception to trigger the graceful shutdown
         raise Exception("Shutdown signal received")
 
@@ -574,7 +606,8 @@ async def main():
     timestamps = {}
 
     # Create a ThreadPoolExecutor for sender tasks
-    workers =  (2 if len(ris_collectors) > 0 else 0) + (2 if len(routeviews_collectors) > 0 else 0) + len(openbmp_collectors)
+    workers = (2 if len(ris_collectors) > 0 else 0) + \
+        (2 if len(routeviews_collectors) > 0 else 0) + len(openbmp_collectors)
     executor = ThreadPoolExecutor(max_workers=workers)
 
     # Start logging task that is updated within the loop
@@ -590,8 +623,12 @@ async def main():
         }
 
         # Verify database initialization
-        injection_started = True if db.get(b'injection_started') == b'\x01' else False # Whether the RIBs injection started
-        injection_ended = True if db.get(b'injection_ended') == b'\x01' else False # Whether the RIBs injection ended (important)
+        # Whether the RIBs injection started
+        injection_started = True if db.get(
+            b'injection_started') == b'\x01' else False
+        # Whether the RIBs injection ended (important)
+        injection_ended = True if db.get(
+            b'injection_ended') == b'\x01' else False
 
         # We need to ensure all RIBs are fully injected
         if injection_started and injection_ended:
@@ -605,7 +642,7 @@ async def main():
             # Database is corrupted, we need to exit
             logger.error("RIBs injection is corrupted, exiting...")
             raise Exception("Database is corrupted, exiting...")
-        
+
         # HACK: For Route Views, we need to manually fetch the latest RIBs
         rv_rib_urls = []
         for i in routeviews_collectors:
@@ -625,6 +662,7 @@ async def main():
 
         # Initialize futures
         futures = []
+
         def handle_future(future):
             try:
                 exception = future.exception()
@@ -640,30 +678,39 @@ async def main():
                 })
 
         # RIB Tasks
-        if len(routeviews_collectors) > 0: # Only if there are Route Views collectors
-            future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip([f"{host}.routeviews.org" for host, _ in routeviews_collectors], rv_rib_urls)), 'route-views', events)
+        if len(routeviews_collectors) > 0:
+            # Only if there are Route Views collectors
+            future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip(list(set(
+                [f"{host}.routeviews.org" for host, _ in routeviews_collectors])), rv_rib_urls)), 'route-views', events)
             future.add_done_callback(handle_future)
             futures.append(asyncio.wrap_future(future))
 
-        if len(ris_collectors) > 0: # Only if there are RIS collectors
-            future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip([f"{host}.ripe.net" for host, _ in routeviews_collectors], [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', events)
+        if len(ris_collectors) > 0:  
+            # Only if there are RIS collectors
+            future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip(list(set(
+                [f"{host}.ripe.net" for host, _ in ris_collectors])), [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', events)
             future.add_done_callback(handle_future)
             futures.append(asyncio.wrap_future(future))
 
         # Kafka Tasks
-        if len(routeviews_collectors) > 0: # Only if there are Route Views collectors
-            future = loop.run_in_executor(executor, kafka_task, routeviews_consumer_conf, timestamps, list(zip([f"{host}.routeviews.org" for host, _ in routeviews_collectors], [f'routeviews.{host}.{peer}.bmp_raw' for host, peer in routeviews_collectors])), [f'routeviews.{host}.{peer}.bmp_raw' for host, peer in routeviews_collectors], queue, db, status, BATCH_SIZE, 'route-views', events)
+        if len(routeviews_collectors) > 0:
+            # Only if there are Route Views collectors
+            future = loop.run_in_executor(executor, kafka_task, routeviews_consumer_conf, timestamps, list(zip([f"{host}.routeviews.org" for host, _ in routeviews_collectors],
+                [f'routeviews.{host}.{peer}.bmp_raw' for host, peer in routeviews_collectors])), [f'routeviews.{host}.{peer}.bmp_raw' for host, peer in routeviews_collectors], queue, db, status, BATCH_SIZE, 'route-views', events)
             future.add_done_callback(handle_future)
             futures.append(asyncio.wrap_future(future))
 
-        if len(ris_collectors) > 0: # Only if there are RIS collectors
-            future = loop.run_in_executor(executor, kafka_task, ris_consumer_conf, timestamps, list(zip([f"{host}.ripe.net" for host, _ in routeviews_collectors], ['ris-live' for _ in ris_collectors])), ['ris-live'], queue, db, status, BATCH_SIZE, 'ris', events)
+        if len(ris_collectors) > 0:
+            # Only if there are RIS collectors
+            future = loop.run_in_executor(executor, kafka_task, ris_consumer_conf, timestamps, list(zip([f"{host}.ripe.net" for host, _ in ris_collectors],
+                ['ris-live' for _ in ris_collectors])), ['ris-live'], queue, db, status, BATCH_SIZE, 'ris', events)
             future.add_done_callback(handle_future)
             futures.append(asyncio.wrap_future(future))
 
         # Sender Tasks
         for host, port in openbmp_collectors:
-            future = loop.run_in_executor(executor, sender_task, queue, host, port, db, status)
+            future = loop.run_in_executor(
+                executor, sender_task, queue, host, port, db, status)
             future.add_done_callback(handle_future)
             futures.append(asyncio.wrap_future(future))
 
