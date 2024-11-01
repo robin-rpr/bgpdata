@@ -125,11 +125,11 @@ def on_assign(consumer, partitions, db):
 
             # Set the offset for each partition
             for partition in partitions:
-                offset_bytes = db.get(f'{consumer.topic}_{partition.partition}'.encode('utf-8')) or None
+                last_offset = db.get(f'{partition.topic}_{partition.partition}'.encode('utf-8')) or None
                 # If the offset is stored, set it
-                if offset_bytes is not None:
-                    partition.offset = int.from_bytes(offset_bytes, byteorder='big')
-                    logger.info(f"Setting offset for partition {partition.partition} of {consumer.topic()} to {partition.offset}")
+                if last_offset is not None:
+                    partition.offset = int.from_bytes(last_offset, byteorder='big') + 1 # +1 because we start from the next message
+                    logger.info(f"Setting offset for partition {partition.partition} of {partition.topic} to {partition.offset}")
             
             # Assign the partitions to the consumer
             consumer.assign(partitions)
