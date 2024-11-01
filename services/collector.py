@@ -15,7 +15,7 @@ Redistribution and use in source and binary forms, with or without modification,
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-from confluent_kafka import KafkaError, Consumer
+from confluent_kafka import KafkaError, Consumer, TopicPartition
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from protocols.bmp import BMPv3
@@ -135,7 +135,7 @@ rv_consumer_conf = {
     'bootstrap.servers': 'stream.routeviews.org:9092',
     'group.id': f"bgpdata-{hostname}",
     'partition.assignment.strategy': 'roundrobin',
-    'enable.auto.commit': True,  # Enable automatic offset commit, we use RocksDB to store the offset
+    'enable.auto.commit': False,  # Disable automatic offset commit
     'auto.offset.reset': 'earliest',
 }
 
@@ -144,7 +144,7 @@ ris_consumer_conf = {
     'bootstrap.servers': 'node01.kafka-pub.ris.ripe.net:9094,node02.kafka-pub.ris.ripe.net:9094,node03.kafka-pub.ris.ripe.net:9094',
     'group.id': f"bgpdata-{hostname}",
     'partition.assignment.strategy': 'roundrobin',
-    'enable.auto.commit': True,  # Enable automatic offset commit, we use RocksDB to store the offset
+    'enable.auto.commit': False,  # Disable automatic offset commit
     'auto.offset.reset': 'earliest',
     # SASL Authentication (required for RIS Kafka)
     'security.protocol': 'SASL_SSL',
@@ -196,7 +196,7 @@ def on_assign(consumer, partitions, db):
     Args:
         consumer: The Kafka consumer instance.
         partitions: A list of TopicPartition objects representing the newly assigned partitions.
-        db: The RocksDB database to store the offset.
+        db: The RocksDB database.
     """
     try:
         if partitions[0].error:
@@ -206,8 +206,11 @@ def on_assign(consumer, partitions, db):
 
             # Set the offset for each partition
             for partition in partitions:
-                partition.offset = int.from_bytes(db.get(f'{consumer.topic()}_{partition.partition}'.encode('utf-8')) or b'\x00', byteorder='big')
-                logger.info(f"Setting offset for partition {partition.partition} of {consumer.topic()} to {partition.offset}")
+                offset_bytes = db.get(f'{consumer.topic}_{partition.partition}'.encode('utf-8')) or None
+                # If the offset is stored, set it
+                if offset_bytes is not None:
+                    partition.offset = int.from_bytes(offset_bytes, byteorder='big')
+                    logger.info(f"Setting offset for partition {partition.partition} of {consumer.topic()} to {partition.offset}")
             
             # Assign the partitions to the consumer
             consumer.assign(partitions)
@@ -253,12 +256,13 @@ async def logging_task(status, queue):
         # Reset bytes_sent
         status['bytes_sent'] = 0
 
-def rib_task(queue, status, timestamps, collectors, provider, events):
+def rib_task(queue, db, status, timestamps, collectors, provider, events):
     """
     Synchronous task to inject RIB messages from MRT Data Dumps into the queue.
 
     Args:
         queue (queueio.Queue): The queue to add the messages to.
+        db (rocksdbpy.DB): The RocksDB database.
         status (dict): The status dictionary to update the time lag.
         timestamps (dict): A dictionary containing the latest timestamps of the RIBs.
         collectors (list): A list of tuples containing the host and URL of the RIB Data Dumps.
@@ -268,14 +272,17 @@ def rib_task(queue, status, timestamps, collectors, provider, events):
             - ris (threading.Event): The event to wait for before starting.
     """
 
-    status['activity'] = "RIB_INJECTION"
-
     # If the event is set, the provider is already initialized, skip
-    if events[provider].is_set():
+    if events[f"{provider}_provision"].is_set():
         return
-
+    
+    # Set the activity
+    status['activity'] = "RIB_INJECTION"
     logger.info(f"Beginning RIB Injection from {provider} collectors...")
 
+    # Mark the RIBs injection as started
+    db.put(b'injection_started', b'\x01')
+    
     try:
         for host, url in collectors:
             logger.info(f"Injecting RIB from {provider} {host} via {url}")
@@ -337,25 +344,26 @@ def rib_task(queue, status, timestamps, collectors, provider, events):
 
             # Add the messages to the queue
             for message in batch:
-                queue.put((message, 0, provider, host))
+                queue.put((message, 0, provider, host, -1))
 
     except Exception as e:
         logger.error(f"Error injecting RIB from {provider} collectors: {e}", exc_info=True)
         raise e
 
-    events[provider].set()
+    events[f"{provider}_injection"].set()
 
 
-def kafka_task(consumer, timestamps, topics, queue, db, status, batch_size, provider, events):
+def kafka_task(configuration, timestamps, collectors, topics, queue, db, status, batch_size, provider, events):
     """
     Synchronous task to poll a batch of messages from Kafka and add them to the queue.
 
     Args:
-        consumer (confluent_kafka.Consumer): The Kafka consumer instance.
+        configuration (dict): The configuration of the Kafka consumer.
         timestamps (dict): A dictionary containing the latest timestamps of the RIBs.
+        collectors (list): A list of tuples containing the host and topic of the collectors.
         topics (list): A list of topics to subscribe to.
         queue (queueio.Queue): The queue to add the messages to.
-        db (rocksdbpy.DB): The RocksDB database to store the offset.
+        db (rocksdbpy.DB): The RocksDB database.
         status (dict): The status dictionary to update the time lag.
         batch_size (int): Number of messages to fetch at once.
         provider (str): The provider of the messages.
@@ -364,13 +372,17 @@ def kafka_task(consumer, timestamps, topics, queue, db, status, batch_size, prov
             - ris (threading.Event): The event to wait for before starting.
     """
 
-    # Wait for all events to be set
-    for event in events.values():
-        event.wait()
+    # Wait for possible RIB injection to finish
+    for key in events.keys():
+        if key.endswith("_injection"):
+            events[key].wait()
 
+    # Set the activity
     status['activity'] = "KAFKA_POLLING"
-
     logger.info(f"Subscribing to {provider} Kafka Consumer...")
+
+    # Create Kafka Consumer
+    consumer = Consumer(configuration)
 
     # Subscribe to Kafka Consumer
     consumer.subscribe(
@@ -378,7 +390,71 @@ def kafka_task(consumer, timestamps, topics, queue, db, status, batch_size, prov
         on_assign=lambda c, p: on_assign(c, p, db),
         on_revoke=lambda c, p: logger.info(f"Revoked partitions: {[part.partition for part in p]}")
     )
-    
+
+    # If RIBs are injected but not yet provisioned
+    if not events[f"{provider}_provision"].is_set():
+        # Seek to desired offsets based on timestamps
+        # Define a time delta (e.g., 5 hours)
+        time_delta = timedelta(hours=5)
+
+        # We need to keep track of the oldest timestamps of the topics
+        # HACK: Why? In case we have multiple collector hosts on a single topic (e.g. RIS).
+        oldest_timestamps = {}
+
+        for host, topic in collectors:
+            # Verify that the collector is known
+            if host not in timestamps:
+                raise Exception(f"Attempted to provision {host} but it's unknown")
+            
+            # HACK: Assure the oldest timestamp for the topic (see explanation above)
+            oldest_timestamps[topic] = min(oldest_timestamps.get(topic, timestamps[host]), timestamps[host])
+            
+            # Get the timestamp of the recorded RIB
+            timestamp = datetime.fromtimestamp(oldest_timestamps[topic])
+
+            # Calculate the target time
+            target_time = timestamp - time_delta
+            target_timestamp_ms = int(target_time.timestamp() * 1000)  # Convert to milliseconds
+
+            # Get metadata to retrieve all partitions for the topic
+            metadata = consumer.list_topics(topic, timeout=10)
+            partitions = metadata.topics[topic].partitions.keys()
+            
+            # Create TopicPartition instances with the target timestamp
+            topic_partitions = [TopicPartition(topic, p, target_timestamp_ms) for p in partitions]
+            
+            # Query Kafka for the offsets
+            offsets = consumer.offsets_for_times(topic_partitions, timeout=10)
+            
+            # Extract the found offsets
+            found_offsets = []
+            for tp in offsets:
+                if tp.offset == -1:
+                    # Timestamp is greater than all message timestamps in the partition
+                    # Start from the latest offset
+                    latest = consumer.get_watermark_offsets(tp)
+                    tp.offset = latest[1]
+                found_offsets.append(tp)
+            
+            # Assign the found offsets
+            consumer.assign(found_offsets)
+
+            # Log the assigned offsets
+            for tp in found_offsets:
+                logger.info(f"Assigned topic {tp.topic} partition {tp.partition} to offset {tp.offset}")
+
+            # Mark Consumer as provisioned
+            events[f"{provider}_provision"].set()
+
+            # Wait for all consumers to be provisioned
+            for key in events.keys():
+                if key.endswith("_provision"):
+                    events[key].wait()
+
+            # Mark the RIBs injection as fulfilled
+            db.put(b'injection_ended', b'\x01')
+
+    # Poll messages from Kafka
     while True:
         # Poll a batch of messages
         msgs = consumer.consume(batch_size, timeout=0.1)
@@ -412,7 +488,13 @@ def kafka_task(consumer, timestamps, topics, queue, db, status, batch_size, prov
                     # TODO (2): Parse the message and replace the peer_distinguisher with our own hash representation
                     #           Of the Route Views Collector name (SHA256) through the BMPv3.construct() function (e.g. the host).
 
-                    # Add the message
+                    # TODO (3): We need to keep track of the timestamp of the message
+                    #           We do this to be able to show the time lag of the messages.
+
+                    # HACK: Dummy timestamp for now
+                    timestamp = datetime.now()
+
+                    # HACK: Untempered message for now
                     messages.append(value)
                 case 'ris':
                     # Remove the first 5 bytes (we don't need them)
@@ -483,11 +565,10 @@ def sender_task(queue, host, port, db, status):
                     sock.sendall(message)
                     status['bytes_sent'] += len(message)
 
-                    # Save offset to RocksDB
-                    db.set(
-                        f'{provider}_{topic}_{partition}'.encode('utf-8'),
-                        offset.to_bytes(16, byteorder='big')
-                    )
+                    if partition != -1:
+                        # Save offset to RocksDB only if it's from Kafka
+                        key = f'{topic}_{partition}'.encode('utf-8')
+                        db.put(key, offset.to_bytes(16, byteorder='big'))
 
                     # Mark the message as done
                     queue.task_done()
@@ -533,13 +614,7 @@ async def main():
     loop = asyncio.get_running_loop()
 
     # Create RocksDB database
-    db = rocksdbpy.open_default("offset.db")
-
-    # Create Route Views Kafka Consumer
-    rv_consumer = Consumer(rv_consumer_conf)
-
-    # Create RIS Live Kafka Consumer
-    ris_consumer = Consumer(ris_consumer_conf)
+    db = rocksdbpy.open_default("rocks.db")
 
     # Define queue with a limit
     queue = queueio.Queue(maxsize=QUEUE_SIZE)
@@ -557,10 +632,6 @@ async def main():
     # Create OpenBMP Socket with retry until timeout
     collectors = [tuple(collector.split(':')) for collector in os.getenv('OPENBMP_COLLECTORS').split(',')]
 
-    # Verify that the OPENBMP_COLLECTORS environment variable is set
-    if collectors is None:
-        raise Exception("OPENBMP_COLLECTORS environment variable is not set")
-
     # Create a ThreadPoolExecutor for sender tasks
     executor = ThreadPoolExecutor(max_workers=4+len(collectors))
 
@@ -570,27 +641,29 @@ async def main():
     try:
         # Create readyness events
         events = {
-            "route-views": threading.Event(),
-            "ris": threading.Event(),
+            "route-views_injection": threading.Event(),
+            "route-views_provision": threading.Event(),
+            "ris_injection": threading.Event(),
+            "ris_provision": threading.Event(),
         }
 
         # Verify database initialization
-        initialized = False
+        injection_started = True if db.get(b'injection_started') == b'\x01' else False # Whether the RIBs injection started
+        injection_ended = True if db.get(b'injection_ended') == b'\x01' else False # Whether the RIBs injection ended (important)
 
-        for key, value in db.iterator():
-            if value == b'\x00' * 16:
-                # RIB Injection failed, detected unexpected null offset
-                raise Exception("RIB Injection failed, data may be corrupted, exiting...")
-            else:
-                logger.info(f"Found offset for {key.decode('utf-8')}: {value.hex()}")
-                initialized = True
-
-        if initialized:
+        # We need to ensure all RIBs are fully injected
+        if injection_started and injection_ended:
             # Everything is initialized
-            logger.info("Offset database is intact.")
-            events['route-views'].set()
-            events['ris'].set()
+            events['route-views_injection'].set()
+            events['route-views_provision'].set()
+            events['ris_injection'].set()
+            events['ris_provision'].set()
 
+        elif injection_started and not injection_ended:
+            # Database is corrupted, we need to exit
+            logger.error("RIBs injection is corrupted, exiting...")
+            raise Exception("Database is corrupted, exiting...")
+        
         # HACK: For Route Views, we need to manually fetch the latest RIBs
         rv_rib_urls = []
         for i in rv_collectors:
@@ -609,16 +682,23 @@ async def main():
             rv_rib_urls.append(f"{index}{latest_rib}")
 
         # RIB Tasks
-        loop.run_in_executor(executor, rib_task, queue, status, timestamps, list(zip([f"{i}.routeviews.org" for i in rv_collectors], rv_rib_urls)), 'route-views', events)
-        loop.run_in_executor(executor, rib_task, queue, status, timestamps, list(zip([f"{i}.ripe.net" for i in ris_collectors], [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', events)
+        future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip([f"{i}.routeviews.org" for i in rv_collectors], rv_rib_urls)), 'route-views', events)
+        future.add_done_callback(lambda f: (_ for _ in ()).throw(f.exception()) if f.exception() else None) # Propagate exceptions
+
+        future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip([f"{i}.ripe.net" for i in ris_collectors], [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', events)
+        future.add_done_callback(lambda f: (_ for _ in ()).throw(f.exception()) if f.exception() else None) # Propagate exceptions
 
         # Kafka Tasks
-        loop.run_in_executor(executor, kafka_task, rv_consumer, timestamps, [f'bmp.rv.routeviews.{i}' for i in rv_collectors], queue, db, status, BATCH_SIZE, 'route-views', events)
-        loop.run_in_executor(executor, kafka_task, ris_consumer, timestamps, ['ris-live'], queue, db, status, BATCH_SIZE, 'ris', events)
+        future = loop.run_in_executor(executor, kafka_task, rv_consumer_conf, timestamps, list(zip(rv_collectors, [f'bmp.rv.routeviews.{i}' for i in rv_collectors])), [f'bmp.rv.routeviews.{i}' for i in rv_collectors], queue, db, status, BATCH_SIZE, 'route-views', events)
+        future.add_done_callback(lambda f: (_ for _ in ()).throw(f.exception()) if f.exception() else None) # Propagate exceptions
+
+        future = loop.run_in_executor(executor, kafka_task, ris_consumer_conf, timestamps, list(zip(ris_collectors, ['ris-live' for _ in ris_collectors])), ['ris-live'], queue, db, status, BATCH_SIZE, 'ris', events)
+        future.add_done_callback(lambda f: (_ for _ in ()).throw(f.exception()) if f.exception() else None) # Propagate exceptions
 
         # Sender Tasks
         for host, port in collectors:
-            loop.run_in_executor(executor, sender_task, queue, host, port, db, status)
+            future = loop.run_in_executor(executor, sender_task, queue, host, port, db, status)
+            future.add_done_callback(lambda f: (_ for _ in ()).throw(f.exception()) if f.exception() else None) # Propagate exceptions
 
         # Keep the logging task and main loop alive
         await asyncio.gather(task)
