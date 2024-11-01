@@ -9,8 +9,6 @@
 
 BGPDATA helps researchers and network operators gain insights into their networks by providing a scalable and reliable way to analyze and inspect historical and live BGP data from [Route Views](https://www.routeviews.org/) and [RIPE NCC RIS](https://ris.ripe.net/).
 
-Additionally, this project provides tools and an experimental platform to study how RIS data could be aggregated on [RIPEstat](https://stat.ripe.net/), reconciling historical and live data for research and analysis on the global internet.
-
 ## Data Flow
 We collect both historical and live BGP data from [Route Views](https://www.routeviews.org/) and [RIPE NCC RIS](https://ris.ripe.net/) collectors to provide comprehensive insights. 
 
