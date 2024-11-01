@@ -171,7 +171,11 @@ async def logging_task(status, queue):
         # Convert bytes to kilobits per second
         kbps_counter = (bytes_sent * 8) / seconds / 1000
 
-        if status['activity'] == "INITIALIZING":
+        if status['activity'] == "WAITING":
+            # Waiting
+            logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
+                        f"Transmitting at ~{kbps_counter:.2f} kbit/s")
+        elif status['activity'] == "INITIALIZING":
             # Initializing
             logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
                         f"Transmitting at ~{kbps_counter:.2f} kbit/s")
@@ -184,6 +188,11 @@ async def logging_task(status, queue):
             # Kafka Polling
             logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
                         f"Time lag: ~{status['time_lag'].total_seconds()} seconds, "
+                        f"Transmitting at ~{kbps_counter:.2f} kbit/s, "
+                        f"Queue size: ~{queue.qsize()}")
+        elif status['activity'] == "TERMINATING":
+            # Terminating
+            logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
                         f"Transmitting at ~{kbps_counter:.2f} kbit/s, "
                         f"Queue size: ~{queue.qsize()}")
 
@@ -313,6 +322,9 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
             - ris_injection (threading.Event): The event to wait for before starting.
             - ris_provision (threading.Event): The event to wait for before starting.
     """
+
+    # Set the activity
+    status['activity'] = "WAITING"
 
     # Wait for possible RIB injection to finish
     for key in events.keys():
@@ -595,6 +607,9 @@ async def main():
 
     # Define shutdown function
     def shutdown(signum, _=None):
+        # Set the activity
+        status['activity'] = "TERMINATING"
+
         # Log the shutdown signal and frame information
         logger.warning(
             f"Shutdown signal ({signum}) received, exiting...")
