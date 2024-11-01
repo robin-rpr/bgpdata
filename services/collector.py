@@ -29,6 +29,7 @@ import requests
 import logging
 import asyncio
 import bgpkit
+import signal
 import socket
 import struct
 import time
@@ -582,6 +583,8 @@ def sender_task(queue, host, port, db, status):
     except Exception as e:
         logger.error("Socket connection failed, exiting...", exc_info=True)
         raise e
+    
+
 
 async def main():
     """
@@ -609,6 +612,17 @@ async def main():
 
     # Wait for 10 seconds before starting (avoids self-inflicted dos attacks)
     time.sleep(10)
+
+    # Define shutdown function
+    def shutdown(signum, frame):
+        # Log the shutdown signal and frame information
+        logger.warning(f"Shutdown signal ({signum}) received, frame: {frame}, exiting...")
+        # Raise an exception to trigger the graceful shutdown
+        raise Exception("Shutdown signal received")
+
+    # Register signal handlers
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, shutdown)
 
     # Get the running loop
     loop = asyncio.get_running_loop()
