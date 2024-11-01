@@ -34,6 +34,7 @@ import socket
 import struct
 import time
 import json
+import sys
 import os
 
 # Get the hostname and process ID
@@ -43,93 +44,10 @@ hostname = socket.gethostname()  # Get the machine's hostname
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# List of Route Views collectors with locations
-# https://www.routeviews.org/
-rv_collectors = [
-    "amsix.ams",             # AMS-IX Amsterdam, Netherlands
-    "cix.atl",               # CIX-ATL Atlanta, Georgia
-    "decix.jhb",             # DE-CIX KUL, Johor Bahru, Malaysia
-    "iraq-ixp.bgw",          # IRAQ-IXP Baghdad, Iraq
-    "pacwave.lax",           # Pacific Wave, Los Angeles, California
-    "pit.scl",               # PIT Chile Santiago, Chile
-    "pitmx.qro",             # PIT Chile MX, Querétaro, Mexico
-    # "route-views",         # U of Oregon, Eugene, Oregon (Only has Cisco's `show ip bgp` data, not relevant for us)
-    "route-views.amsix",     # AMS-IX AM6, Amsterdam, Netherlands
-    "route-views.bdix",      # BDIX, Dhaka, Bangladesh
-    "route-views.bknix",     # BKNIX, Bangkok, Thailand
-    "route-views.chicago",   # Equinix CH1, Chicago, Illinois
-    "route-views.chile",     # NIC.cl Santiago, Chile
-    "route-views.eqix",      # Equinix DC, Ashburn, Virginia
-    "route-views.flix",      # FL-IX, Miami, Florida
-    "route-views.fortaleza", # IX.br (PTT.br), Fortaleza, Brazil
-    "route-views.gixa",      # GIXA, Ghana, Africa
-    "route-views.gorex",     # GOREX, Guam, US Territories
-    # "route-views.jinx",    # JINX, Johannesburg, South Africa (RETIRED)
-    "route-views.kixp",      # KIXP, Nairobi, Kenya
-    "route-views.linx",      # LINX, London, United Kingdom
-    "route-views.mwix",      # FD-IX, Indianapolis, Indiana
-    "route-views.napafrica", # NAPAfrica, Johannesburg, South Africa
-    "route-views.nwax",      # NWAX, Portland, Oregon
-    "route-views.ny",        # DE-CIX NYC, New York, USA
-    "route-views.isc",       # PAIX (ISC), Palo Alto, California
-    "route-views.perth",     # West Australian Internet Exchange, Perth, Australia
-    "route-views.peru",      # Peru IX, Lima, Peru
-    "route-views.phoix",     # University of the Philippines, Diliman, Quezon City, Philippines
-    "route-views.rio",       # IX.br (PTT.br), Rio de Janeiro, Brazil
-    # "route-views.saopaulo",# SAOPAULO (PTT Metro, NIC.br), Sao Paulo, Brazil (RETIRED)
-    "route-views2.saopaulo", # SAOPAULO (PTT Metro, NIC.br), Sao Paulo, Brazil
-    "route-views.sfmix",     # San Francisco Metro IX, San Francisco, California
-    # "route-views.siex",    # Southern Italy Exchange (SIEX), Rome, Italy (OFFLINE)
-    "route-views.sg",        # Equinix SG1, Singapore, Singapore
-    "route-views.soxrs",     # Serbia Open Exchange, Belgrade, Serbia
-    "route-views.sydney",    # Equinix SYD1, Sydney, Australia
-    "route-views.telxatl",   # TELXATL, Atlanta, Georgia
-    "route-views.uaeix",     # UAE-IX, Dubai, United Arab Emirates
-    "route-views.wide",      # DIXIE (NSPIXP), Tokyo, Japan
-    # Multi-hop collectors
-    "route-views2",          # U of Oregon, Eugene, Oregon
-    "route-views3",          # U of Oregon, Eugene, Oregon
-    "route-views4",          # U of Oregon, Eugene, Oregon
-    "route-views5",          # U of Oregon, Eugene, Oregon
-    "route-views6",          # U of Oregon, Eugene, Oregon (IPv6)
-    "route-views7",          # U of Oregon, Eugene, Oregon
-    # Applications
-    # "bgpmon",              # BGPMon, Colorado State University Fort Collins, Colorado (OFFLINE)
-    # "archive",             # Archive, includes asn.routeviews.org zone files, U of Oregon, Eugene, Oregon
-    # "bgplay",              # BGPlay, BGP update player (RETIRED), U of Oregon, Eugene, Oregon
-    # "zebra"                # BGP Beacon prefix 192.135.183.0 (RETIRED), U of Oregon, Eugene, Oregon
-]
-
-# List of RRCs with locations
-# https://ris.ripe.net
-ris_collectors = [
-    "rrc00",                 # Amsterdam, NL - multihop, global
-    "rrc01",                 # London, GB - IXP, LINX, LONAP
-    # "rrc02",               # Paris, FR - IXP, SFINX (Historic)
-    "rrc03",                 # Amsterdam, NL - IXP, AMS-IX, NL-IX
-    "rrc04",                 # Geneva, CH - IXP, CIXP
-    "rrc05",                 # Vienna, AT - IXP, VIX
-    "rrc06",                 # Otemachi, JP - IXP, DIX-IE, JPIX
-    "rrc07",                 # Stockholm, SE - IXP, Netnod
-    # "rrc08",               # San Jose, CA, US - IXP, MAE-WEST (Historic)
-    # "rrc09",               # Zurich, CH - IXP, TIX (Historic)
-    "rrc10",                 # Milan, IT - IXP, MIX
-    "rrc11",                 # New York, NY, US - IXP, NYIIX
-    "rrc12",                 # Frankfurt, DE - IXP, DE-CIX
-    "rrc13",                 # Moscow, RU - IXP, MSK-IX
-    "rrc14",                 # Palo Alto, CA, US - IXP, PAIX
-    "rrc15",                 # Sao Paolo, BR - IXP, PTTMetro-SP
-    "rrc16",                 # Miami, FL, US - IXP, Equinix Miami
-    "rrc18",                 # Barcelona, ES - IXP, CATNIX
-    "rrc19",                 # Johannesburg, ZA - IXP, NAP Africa JB
-    "rrc20",                 # Zurich, CH - IXP, SwissIX
-    "rrc21",                 # Paris, FR - IXP, France-IX Paris and Marseille
-    "rrc22",                 # Bucharest, RO - IXP, Interlan
-    "rrc23",                 # Singapore, SG - IXP, Equinix Singapore
-    "rrc24",                 # Montevideo, UY - multihop, LACNIC region
-    "rrc25",                 # Amsterdam, NL - multihop, global
-    "rrc26",                 # Dubai, AE - IXP, UAE-IX"
-]
+# Get list of collectors
+routeviews_collectors = [collector.strip() for collector in (os.getenv('ROUTEVIEWS_COLLECTORS') or '').split(',')]
+ris_collectors = [collector.strip() for collector in (os.getenv('RIS_COLLECTORS') or '').split(',')]
+openbmp_collectors = [tuple(collector.split(':')) for collector in (os.getenv('OPENBMP_COLLECTORS') or '').split(',')]
 
 # Route Views Kafka Consumer configuration
 rv_consumer_conf = {
@@ -286,7 +204,7 @@ def rib_task(queue, db, status, timestamps, collectors, provider, events):
     
     try:
         for host, url in collectors:
-            logger.info(f"Injecting RIB from {provider} {host} via {url}")
+            logger.info(f"Injecting RIB from {provider} of {host} via {url}")
 
             batch = []
 
@@ -405,7 +323,7 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
         for host, topic in collectors:
             # Verify that the collector is known
             if host not in timestamps:
-                raise Exception(f"Attempted to provision {host} but it's unknown")
+                raise Exception(f"Attempted to provision {host} of {provider} but it's unknown")
             
             # Assure the oldest timestamp for the topic (see comment above)
             oldest_timestamps[topic] = min(oldest_timestamps.get(topic, timestamps[host]), timestamps[host])
@@ -640,14 +558,20 @@ async def main():
         'activity': "INITIALIZING",            # Initialize activity
     }
 
+    # Log the collectors
+    logger.info(f"Route Views collectors: {routeviews_collectors}")
+    logger.info(f"RIS collectors: {ris_collectors}")
+    logger.info(f"OpenBMP collectors: {openbmp_collectors}")
+
+    if len(routeviews_collectors) == 0 or len(ris_collectors) == 0 or len(openbmp_collectors) == 0:
+        raise Exception("No collectors specified, exiting...")
+
     # Keep track of freshest timestamps of the RIBs
     timestamps = {}
 
-    # Create OpenBMP Socket with retry until timeout
-    collectors = [tuple(collector.split(':')) for collector in os.getenv('OPENBMP_COLLECTORS').split(',')]
-
     # Create a ThreadPoolExecutor for sender tasks
-    executor = ThreadPoolExecutor(max_workers=4+len(collectors))
+    workers =  (1 if len(ris_collectors) > 0 else 0) + (1 if len(routeviews_collectors) > 0 else 0) + len(openbmp_collectors)
+    executor = ThreadPoolExecutor(max_workers=workers)
 
     # Start logging task that is updated within the loop
     task = asyncio.create_task(logging_task(status, queue))
@@ -680,7 +604,7 @@ async def main():
         
         # HACK: For Route Views, we need to manually fetch the latest RIBs
         rv_rib_urls = []
-        for i in rv_collectors:
+        for i in routeviews_collectors:
             if i == "route-views2":
                 # Route Views 2 is hosted on the root folder
                 index = f"https://archive.routeviews.org/bgpdata/{datetime.now().year}.{datetime.now().month}/RIBS/"
@@ -695,24 +619,35 @@ async def main():
             latest_rib = soup.find_all('a')[-1].text
             rv_rib_urls.append(f"{index}{latest_rib}")
 
-        # RIB Tasks
-        future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip([f"{i}.routeviews.org" for i in rv_collectors], rv_rib_urls)), 'route-views', events)
-        future.add_done_callback(lambda f: (_ for _ in ()).throw(f.exception()) if f.exception() else None) # Propagate exceptions
+        async def handle_future(future):
+            try:
+                await asyncio.wrap_future(future)
+            except Exception as e:
+                logger.error("Thread pool error", exc_info=True)
+                raise e  # Re-raise to propagate
 
-        future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip([f"{i}.ripe.net" for i in ris_collectors], [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', events)
-        future.add_done_callback(lambda f: (_ for _ in ()).throw(f.exception()) if f.exception() else None) # Propagate exceptions
+        # RIB Tasks
+        if len(routeviews_collectors) > 0: # Only if there are Route Views collectors
+            future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip([f"{i}.routeviews.org" for i in routeviews_collectors], rv_rib_urls)), 'route-views', events)
+            future.add_done_callback(handle_future)
+
+        if len(ris_collectors) > 0: # Only if there are RIS collectors
+            future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip([f"{i}.routeviews.org" for i in routeviews_collectors], [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', events)
+            future.add_done_callback(handle_future)
 
         # Kafka Tasks
-        future = loop.run_in_executor(executor, kafka_task, rv_consumer_conf, timestamps, list(zip(rv_collectors, [f'bmp.rv.routeviews.{i}' for i in rv_collectors])), [f'bmp.rv.routeviews.{i}' for i in rv_collectors], queue, db, status, BATCH_SIZE, 'route-views', events)
-        future.add_done_callback(lambda f: (_ for _ in ()).throw(f.exception()) if f.exception() else None) # Propagate exceptions
+        if len(routeviews_collectors) > 0: # Only if there are Route Views collectors
+            future = loop.run_in_executor(executor, kafka_task, rv_consumer_conf, timestamps, list(zip([f"{i}.routeviews.org" for i in routeviews_collectors], [f'bmp.rv.routeviews.{i}' for i in routeviews_collectors])), [f'bmp.rv.routeviews.{i}' for i in routeviews_collectors], queue, db, status, BATCH_SIZE, 'route-views', events)
+            future.add_done_callback(handle_future)
 
-        future = loop.run_in_executor(executor, kafka_task, ris_consumer_conf, timestamps, list(zip(ris_collectors, ['ris-live' for _ in ris_collectors])), ['ris-live'], queue, db, status, BATCH_SIZE, 'ris', events)
-        future.add_done_callback(lambda f: (_ for _ in ()).throw(f.exception()) if f.exception() else None) # Propagate exceptions
+        if len(ris_collectors) > 0: # Only if there are RIS collectors
+            future = loop.run_in_executor(executor, kafka_task, ris_consumer_conf, timestamps, list(zip([f"{i}.routeviews.org" for i in routeviews_collectors], ['ris-live' for _ in ris_collectors])), ['ris-live'], queue, db, status, BATCH_SIZE, 'ris', events)
+            future.add_done_callback(handle_future)
 
         # Sender Tasks
-        for host, port in collectors:
+        for host, port in openbmp_collectors:
             future = loop.run_in_executor(executor, sender_task, queue, host, port, db, status)
-            future.add_done_callback(lambda f: (_ for _ in ()).throw(f.exception()) if f.exception() else None) # Propagate exceptions
+            future.add_done_callback(handle_future)
 
         # Keep the logging task and main loop alive
         await asyncio.gather(task)

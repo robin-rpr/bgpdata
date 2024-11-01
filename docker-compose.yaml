@@ -83,8 +83,81 @@ services:
         container_name: core-collector
         restart: unless-stopped
         environment:
-            - POSTGRESQL_DATABASE=postgresql+asyncpg://core:core@core-db:5432/default
-            - OPENBMP_COLLECTORS=openbmp-collector:5000
+            POSTGRESQL_DATABASE: postgresql+asyncpg://core:core@core-db:5432/default
+            # List of OpenBMP collectors
+            # https://github.com/OpenBMP/obmp-collector
+            OPENBMP_COLLECTORS: openbmp-collector:5000
+            # List of Route Views collectors
+            # https://www.routeviews.org/
+            ROUTEVIEWS_COLLECTORS: |
+                amsix.ams,
+                cix.atl,
+                decix.jhb,
+                iraq-ixp.bgw,
+                pacwave.lax,
+                pit.scl,
+                pitmx.qro,
+                route-views.amsix,
+                route-views.bdix,
+                route-views.bknix,
+                route-views.chicago,
+                route-views.chile,
+                route-views.eqix,
+                route-views.flix,
+                route-views.fortaleza,
+                route-views.gixa,
+                route-views.gorex,
+                route-views.kixp,
+                route-views.linx,
+                route-views.mwix,
+                route-views.napafrica,
+                route-views.nwax, 
+                route-views.ny,
+                route-views.isc,
+                route-views.perth,
+                route-views.peru,
+                route-views.phoix,
+                route-views.rio,
+                route-views2.saopaulo,
+                route-views.sfmix,
+                route-views.sg, 
+                route-views.soxrs,
+                route-views.sydney,
+                route-views.telxatl,
+                route-views.uaeix,
+                route-views.wide,
+                route-views2,
+                route-views3,
+                route-views4,
+                route-views5,
+                route-views6,
+                route-views7
+            # List of RIPE Route Collectors
+            # https://ris.ripe.net
+            RIS_COLLECTORS: |
+                rrc00,
+                rrc01,
+                rrc03,
+                rrc04,
+                rrc05,
+                rrc06,
+                rrc07,
+                rrc10,
+                rrc11,
+                rrc12,
+                rrc13,
+                rrc14,
+                rrc15,
+                rrc16,
+                rrc18,
+                rrc19,
+                rrc20,
+                rrc21,
+                rrc22,
+                rrc23,
+                rrc24,
+                rrc25,
+                rrc26
         depends_on:
             openbmp-collector:
                 condition: service_healthy
