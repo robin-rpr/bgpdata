@@ -544,8 +544,8 @@ services:
             RIS_USERNAME: public
             RIS_PASSWORD: public
             RIS_COLLECTORS: |
-                rrc00,
-                rrc01
+                rrc00
+            #    rrc01,
             #    rrc03,
             #    rrc04,
             #    rrc05,

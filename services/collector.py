@@ -47,11 +47,11 @@ logger = logging.getLogger(__name__)
 
 # Get list of collectors
 routeviews_collectors = [tuple(collector.strip().split(':')) for collector in (
-    os.getenv('ROUTEVIEWS_COLLECTORS') or '').split(',')]
+    os.getenv('ROUTEVIEWS_COLLECTORS') or '').split(',') if collector]
 ris_collectors = [collector.strip() for collector in (
-    os.getenv('RIS_COLLECTORS') or '').split(',')]
+    os.getenv('RIS_COLLECTORS') or '').split(',') if collector]
 openbmp_collectors = [tuple(collector.split(':')) for collector in (
-    os.getenv('OPENBMP_COLLECTORS') or '').split(',')]
+    os.getenv('OPENBMP_COLLECTORS') or '').split(',') if collector]
 
 # Route Views Kafka Consumer configuration
 routeviews_consumer_conf = {
@@ -173,16 +173,16 @@ async def logging_task(status, queue):
 
         if status['activity'] == "INITIALIZING":
             # Initializing
-            logger.info(f"Activity: {status['activity']}, "
+            logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
                         f"Transmitting at ~{kbps_counter:.2f} kbit/s")
         elif status['activity'] == "RIB_INJECTION":
             # RIB Injection
-            logger.info(f"Activity: {status['activity']}, "
+            logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
                         f"Transmitting at ~{kbps_counter:.2f} kbit/s, "
                         f"Queue size: ~{queue.qsize()}")
         elif status['activity'] == "KAFKA_POLLING":
             # Kafka Polling
-            logger.info(f"Activity: {status['activity']}, "
+            logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
                         f"Time lag: ~{status['time_lag'].total_seconds()} seconds, "
                         f"Transmitting at ~{kbps_counter:.2f} kbit/s, "
                         f"Queue size: ~{queue.qsize()}")
@@ -203,8 +203,10 @@ def rib_task(queue, db, status, timestamps, collectors, provider, events):
         collectors (list): A list of tuples containing the host and URL of the RIB Data Dumps.
         provider (str): The provider of the MRT Data Dumps.
         events (dict): A dictionary containing the following keys:
-            - route-views (threading.Event): The event to wait for before starting.
-            - ris (threading.Event): The event to wait for before starting.
+            - route-views_injection (threading.Event): The event to wait for before starting.
+            - route-views_provision (threading.Event): The event to wait for before starting.
+            - ris_injection (threading.Event): The event to wait for before starting.
+            - ris_provision (threading.Event): The event to wait for before starting.
     """
 
     # If the event is set, the provider is already initialized, skip
@@ -306,8 +308,10 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
         batch_size (int): Number of messages to fetch at once.
         provider (str): The provider of the messages.
         events (dict): A dictionary containing the following keys:
-            - route-views (threading.Event): The event to wait for before starting.
-            - ris (threading.Event): The event to wait for before starting.
+            - route-views_injection (threading.Event): The event to wait for before starting.
+            - route-views_provision (threading.Event): The event to wait for before starting.
+            - ris_injection (threading.Event): The event to wait for before starting.
+            - ris_provision (threading.Event): The event to wait for before starting.
     """
 
     # Wait for possible RIB injection to finish
@@ -562,18 +566,6 @@ async def main():
     QUEUE_SIZE = 10000000
     BATCH_SIZE = 10000    # Number of messages to fetch at once from Kafka
 
-    # Define shutdown function
-    def shutdown(signum, frame):
-        # Log the shutdown signal and frame information
-        logger.warning(
-            f"Shutdown signal ({signum}) received, frame: {frame}, exiting...")
-        # Raise an exception to trigger the graceful shutdown
-        raise Exception("Shutdown signal received")
-
-    # Register signal handlers
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(sig, shutdown)
-
     # Get the running loop
     loop = asyncio.get_running_loop()
 
@@ -601,14 +593,44 @@ async def main():
     # Start logging task that is updated within the loop
     task = asyncio.create_task(logging_task(status, queue))
 
+    # Define shutdown function
+    def shutdown(signum, _=None):
+        # Log the shutdown signal and frame information
+        logger.warning(
+            f"Shutdown signal ({signum}) received, exiting...")
+        
+        # Close the database
+        db.close()
+
+        # Shutdown the executor
+        executor.shutdown()
+        
+        # Cancel the task
+        task.cancel()
+
+        # Exit the program
+        sys.exit(signum)
+
+    # Register signal handlers
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, shutdown)
+
+    # Log the collectors
+    logger.info(f"Routeviews collectors: {routeviews_collectors}")
+    logger.info(f"RIS collectors: {ris_collectors}")
+    logger.info(f"OpenBMP collectors: {openbmp_collectors}")
+
     try:
         # Create readyness events
-        events = {
-            "route-views_injection": threading.Event(),
-            "route-views_provision": threading.Event(),
-            "ris_injection": threading.Event(),
-            "ris_provision": threading.Event(),
-        }
+        events = {}
+
+        if len(routeviews_collectors) > 0:
+            events["route-views_injection"] = threading.Event()
+            events["route-views_provision"] = threading.Event()
+
+        if len(ris_collectors) > 0:
+            events["ris_injection"] = threading.Event()
+            events["ris_provision"] = threading.Event()
 
         # Whether the RIBs injection started
         injection_started = True if db.get(
@@ -620,47 +642,43 @@ async def main():
         # We need to ensure all RIBs are fully injected
         if injection_started and injection_ended:
             # Everything is initialized
-            events['route-views_injection'].set()
-            events['route-views_provision'].set()
-            events['ris_injection'].set()
-            events['ris_provision'].set()
+            if len(routeviews_collectors) > 0:
+                events['route-views_injection'].set()
+                events['route-views_provision'].set()
+            if len(ris_collectors) > 0:
+                events['ris_injection'].set()
+                events['ris_provision'].set()
 
         elif injection_started and not injection_ended:
             # Database is corrupted, we need to exit
             logger.error("RIBs injection is corrupted, exiting...")
             raise Exception("Database is corrupted, exiting...")
 
-        # HACK: For Route Views, we need to manually fetch the latest RIBs
-        rv_rib_urls = []
-        for host, _ in routeviews_collectors:
-            if host == "route-views2":
-                # Route Views 2 is hosted on the root folder
-                index = f"https://archive.routeviews.org/bgpdata/{datetime.now().year}.{datetime.now().month}/RIBS/"
-            else:
-                # Construct the URL for the latest RIBs
-                index = f"https://archive.routeviews.org/{host}/bgpdata/{datetime.now().year}.{datetime.now().month}/RIBS/"
+        if len(routeviews_collectors) > 0:
+            # HACK: For Route Views, we need to manually fetch the latest RIBs
+            rv_rib_urls = []
+            for host, _ in routeviews_collectors:
+                if host == "route-views2":
+                    # Route Views 2 is hosted on the root folder
+                    index = f"https://archive.routeviews.org/bgpdata/{datetime.now().year}.{datetime.now().month}/RIBS/"
+                else:
+                    # Construct the URL for the latest RIBs
+                    index = f"https://archive.routeviews.org/{host}/bgpdata/{datetime.now().year}.{datetime.now().month}/RIBS/"
 
-            # Crawl the index page to find the latest RIB file (with beautifulsoup its also a apache file server)
-            response = requests.get(index, timeout=30)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
-            latest_rib = soup.find_all('a')[-1].text
-            rv_rib_urls.append(f"{index}{latest_rib}")
+                # Crawl the index page to find the latest RIB file (with beautifulsoup its also a apache file server)
+                response = requests.get(index, timeout=30)
+                response.raise_for_status()
+                soup = BeautifulSoup(response.text, 'html.parser')
+                latest_rib = soup.find_all('a')[-1].text
+                rv_rib_urls.append(f"{index}{latest_rib}")
 
         # Initialize futures
         futures = []
 
         def handle_future(future):
-                exception = future.exception()
-                if exception:
-                    # Close the RocksDB database
-                    db.close()
-
-                    # Shutdown the ThreadPoolExecutor
-                    executor.shutdown()
-
-                    # Cancel the logging task when exiting
-                    task.cancel()
+            exception = future.exception()
+            if exception:
+                shutdown(1)
 
         # RIB Tasks
         if len(routeviews_collectors) > 0:
@@ -702,16 +720,9 @@ async def main():
         # Keep the logging task and main loop alive
         await asyncio.gather(task, *futures)
     except Exception as e:
-        logger.error("Fatal error", exc_info=True)
+        logger.error("Exception", exc_info=True)
     finally:
-        # Close the RocksDB database
-        db.close()
-
-        # Shutdown the ThreadPoolExecutor
-        executor.shutdown()
-
-        # Cancel the logging task when exiting
-        task.cancel()
+        shutdown(0)
         try:
             await task
         except asyncio.CancelledError:
