@@ -2,7 +2,7 @@
 # BGPDATA - BGP Data Collection and Analytics Service
 # 
 # This software is part of the BGPDATA project, which is designed to collect, process, and analyze BGP data from various sources.
-# It helps researchers and network operators get insights into their network by providing a scalable and reliable way to analyze and inspect historical and live BGP data from RIPE NCC RIS.
+# It helps researchers and network operators get insights into their network by providing a scalable and reliable way to analyze and inspect historical and live BGP data from Route Collectors around the world.
 # 
 # Author: Robin Röper
 # 
@@ -31,8 +31,8 @@ services:
     # The 'core-collector' service connects to RIPE NCC's Kafka stream, processes BGP messages,
     # and stores them in the PostgreSQL database.
     #
-    # The 'core-aggregator' service periodically analyzes the collected data to identify
-    # and categorize RIS peers, storing this information in Redis for quick access.
+    # The 'core-aggregator' service periodically analyzes the collected data to aggregate
+    # additional information from the OpenBMP database and store it in the PostgreSQL database.
     ####
     core-db:
         image: timescale/timescaledb:latest-pg13
@@ -211,7 +211,7 @@ services:
     # reports on routing behavior and anomalies.
     #
     # The 'openbmp-collector' service ingests BMP messages from the 'core-collector' service.
-    # Which is collecting from the RIPE NCC's RIS Live Kafka stream.
+    # Which is collecting from various other collectors and RIB dumps.
     #
     # The 'openbmp-grafana' service provides a Grafana dashboard for visualizing the data
     # collected and processed by the application, offering insights and monitoring capabilities.
