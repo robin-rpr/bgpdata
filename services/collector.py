@@ -570,7 +570,7 @@ async def main():
     timestamps = {}
 
     # Create a ThreadPoolExecutor for sender tasks
-    workers =  (1 if len(ris_collectors) > 0 else 0) + (1 if len(routeviews_collectors) > 0 else 0) + len(openbmp_collectors)
+    workers =  (2 if len(ris_collectors) > 0 else 0) + (2 if len(routeviews_collectors) > 0 else 0) + len(openbmp_collectors)
     executor = ThreadPoolExecutor(max_workers=workers)
 
     # Start logging task that is updated within the loop
