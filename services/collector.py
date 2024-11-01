@@ -622,7 +622,6 @@ async def main():
             "ris_provision": threading.Event(),
         }
 
-        # Verify database initialization
         # Whether the RIBs injection started
         injection_started = True if db.get(
             b'injection_started') == b'\x01' else False
