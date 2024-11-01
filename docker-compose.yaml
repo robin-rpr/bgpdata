@@ -210,19 +210,19 @@ services:
             - POSTGRES_DB=openbmp
             - POSTGRES_HOST=openbmp-db
             - POSTGRES_PORT=5432
-            - POSTGRES_DROP_peer_event_log='1 year'
-            - POSTGRES_DROP_stat_reports='4 weeks'
-            - POSTGRES_DROP_ip_rib_log='4 weeks'
-            - POSTGRES_DROP_alerts='4 weeks'
-            - POSTGRES_DROP_ls_nodes_log='4 months'
-            - POSTGRES_DROP_ls_links_log='4 months'
-            - POSTGRES_DROP_ls_prefixes_log='4 months'
-            - POSTGRES_DROP_stats_chg_byprefix='4 weeks'
-            - POSTGRES_DROP_stats_chg_byasn='4 weeks'
-            - POSTGRES_DROP_stats_chg_bypeer='4 weeks'
-            - POSTGRES_DROP_stats_ip_origins='4 weeks'
-            - POSTGRES_DROP_stats_peer_rib='4 weeks'
-            - POSTGRES_DROP_stats_peer_update_counts='4 weeks'
+            - POSTGRES_DROP_peer_event_log='1 month'
+            - POSTGRES_DROP_stat_reports='1 day'
+            - POSTGRES_DROP_ip_rib_log='1 day'
+            - POSTGRES_DROP_alerts='1 day'
+            - POSTGRES_DROP_ls_nodes_log='2 days'
+            - POSTGRES_DROP_ls_links_log='2 days'
+            - POSTGRES_DROP_ls_prefixes_log='2 days'
+            - POSTGRES_DROP_stats_chg_byprefix='1 day'
+            - POSTGRES_DROP_stats_chg_byasn='1 day'
+            - POSTGRES_DROP_stats_chg_bypeer='1 day'
+            - POSTGRES_DROP_stats_ip_origins='1 day'
+            - POSTGRES_DROP_stats_peer_rib='1 day'
+            - POSTGRES_DROP_stats_peer_update_counts='1 day'
 
     openbmp-collector:
         container_name: openbmp-collector
