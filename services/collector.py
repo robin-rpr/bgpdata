@@ -258,9 +258,6 @@ def rib_task(queue, db, status, collectors, provider, events):
 
             batch = []
 
-            # TODO: Remove this (Only for debugging)
-            limit = 10
-
             # Initialize the timestamp if it's not set
             if db.get(f'timestamps_{host}'.encode('utf-8')) is None:
                 db.set(f'timestamps_{host}'.encode('utf-8'), b'\x00\x00\x00\x00\x00\x00\x00\x00')  # Store 0 as the initial value
@@ -315,11 +312,6 @@ def rib_task(queue, db, status, collectors, provider, events):
 
                         # Add the messages to the batch
                         batch.extend(messages)
-
-                        # TODO: Remove this (Only for debugging)
-                        limit -= 1
-                        if limit == 0:
-                            break
 
                     break  # Exit retry loop when successful
 
