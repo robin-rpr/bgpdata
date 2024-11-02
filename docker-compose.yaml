@@ -567,6 +567,7 @@ services:
             #    rrc24,
             #    rrc25,
             #    rrc26
+            LOG_LEVEL: DEBUG
         depends_on:
             openbmp-collector:
                 condition: service_healthy

@@ -70,7 +70,7 @@ class BMPv3:
     BGP_AS_TRANS = 23456          # BGP ASN when AS exceeds 16bits
 
     @staticmethod
-    def construct(collector: str, peer_ip: str, peer_asn: int, timestamp: float, msg_type: str, path=[], origin='IGP', community=[], announcements=[], withdrawals=[], state=None, med=None) -> List[bytes]:
+    def construct(collector: str, peer_ip: str, peer_asn: int, timestamp: float, msg_type: str, path=[], origin='INCOMPLETE', community=[], announcements=[], withdrawals=[], state=None, med=None) -> List[bytes]:
         """
         Construct BMPv3 (RFC7854) messages.
 
