@@ -658,8 +658,8 @@ async def main():
         signal.signal(sig, shutdown)
 
     # Log the collectors
-    logger.info(f"Routeviews collectors: {routeviews_collectors}")
     logger.info(f"RIS collectors: {ris_collectors}")
+    logger.info(f"Route Views collectors: {routeviews_collectors}")
     logger.info(f"OpenBMP collectors: {openbmp_collectors}")
 
     try:
