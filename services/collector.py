@@ -30,11 +30,11 @@ import logging
 import asyncio
 import bgpkit
 import signal
+import select
 import socket
 import struct
 import time
 import json
-import sys
 import os
 
 # Get the hostname and process ID
@@ -149,7 +149,6 @@ def on_assign(consumer, partitions, db):
     except Exception as e:
         logger.error(f"Error handling assignment: {e}", exc_info=True)
 
-
 async def logging_task(status, queue):
     """
     Asynchronous task to periodically log the most recent timestamp, time lag, current poll interval, and consumption rate.
@@ -171,11 +170,7 @@ async def logging_task(status, queue):
         # Convert bytes to kilobits per second
         kbps_counter = (bytes_sent * 8) / seconds / 1000
 
-        if status['activity'] == "WAITING":
-            # Waiting
-            logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
-                        f"Transmitting at ~{kbps_counter:.2f} kbit/s")
-        elif status['activity'] == "INITIALIZING":
+        if status['activity'] == "INITIALIZING":
             # Initializing
             logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
                         f"Transmitting at ~{kbps_counter:.2f} kbit/s")
@@ -227,10 +222,7 @@ def rib_task(queue, db, status, timestamps, collectors, provider, events):
 
     # Set the activity
     status['activity'] = "RIB_INJECTION"
-    logger.info(f"Beginning RIB Injection from {provider} collectors...")
-
-    # Mark the RIBs injection as started
-    db.set(b'injection_started', b'\x01')
+    logger.info(f"Initiating RIB Injection from {provider} collectors...")
 
     try:
         for host, url in collectors:
@@ -245,7 +237,7 @@ def rib_task(queue, db, status, timestamps, collectors, provider, events):
                 try:
                     # Parse the RIB Data Dump via BGPKit
                     # Learn more at https://bgpkit.com/
-                    parser = bgpkit.Parser(url=url)
+                    parser = bgpkit.Parser(url=url, cache_dir='.cache')
 
                     for elem in parser:
                         # Update the timestamp if it's the freshest
@@ -328,9 +320,6 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
             - ris_injection (threading.Event): The event to wait for before starting.
             - ris_provision (threading.Event): The event to wait for before starting.
     """
-
-    # Set the activity
-    status['activity'] = "WAITING"
 
     # Wait for possible RIB injection to finish
     for key in events.keys():
@@ -531,6 +520,9 @@ def sender_task(queue, host, port, db, status):
             - bytes_sent (int): The number of bytes sent since the last log.
             - activity (str): The current activity of the collector.
     """
+    # Whether a message has been sent
+    sent_message = False
+
     # Establish a blocking TCP connection
     try:
         with socket.create_connection((host, port), timeout=60) as sock:
@@ -538,10 +530,26 @@ def sender_task(queue, host, port, db, status):
 
             while True:
                 try:
-                    message, offset, provider, topic, partition = queue.get()
+                    logger.debug("Checking connection")
+                    # Check if the connection is still alive
+                    ready_to_read, _, _ = select.select([sock], [], [], 0)
+                    if ready_to_read:
+                        # Attempt to read data to verify connection is open
+                        if not sock.recv(1, socket.MSG_PEEK):
+                            raise ConnectionError("TCP connection closed by the peer")
+
+                    # Get the message from the queue
+                    message, offset, _, topic, partition = queue.get()
+
+                    # Send the message
                     sock.sendall(message)
                     status['bytes_sent'] += len(message)
 
+                    if not sent_message:
+                        # At least one message has been sent
+                        sent_message = True  # Mark that a message has been sent
+                        db.set(b'injection_started', b'\x01')
+                    
                     if partition != -1:
                         # Save offset to RocksDB only if it's from Kafka
                         key = f'{topic}_{partition}'.encode('utf-8')
@@ -553,12 +561,16 @@ def sender_task(queue, host, port, db, status):
                 except queueio.Empty:
                     # If the queue is empty, let the loop rest a bit
                     time.sleep(0.1)
+                except ConnectionError as e:
+                    logger.error("TCP connection lost", exc_info=True)
+                    raise e
                 except Exception as e:
                     logger.error(
                         "Error sending message over TCP", exc_info=True)
+                    raise e
 
     except Exception as e:
-        logger.error("Socket connection failed, exiting...", exc_info=True)
+        logger.error(f"Connection to OpenBMP collector at {host}:{port} failed", exc_info=True)
         raise e
 
 
@@ -582,6 +594,12 @@ async def main():
     The function runs indefinitely until interrupted or an unhandled exception occurs.
     This script will be able to recover gracefully through the use of RocksDB.
     """
+
+    # Log the start
+    logger.info("Starting...")
+
+    # Wait to not stress the system
+    time.sleep(5)
 
     # Number of messages to queue to the OpenBMP collector (1M is ~1GB Memory)
     QUEUE_SIZE = 10000000
@@ -627,13 +645,13 @@ async def main():
         db.close()
 
         # Shutdown the executor
-        executor.shutdown()
-        
+        executor.shutdown(wait=False)
+
         # Cancel the task
         task.cancel()
 
         # Exit the program
-        sys.exit(signum)
+        os._exit(signum)
 
     # Register signal handlers
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -699,24 +717,17 @@ async def main():
         # Initialize futures
         futures = []
 
-        def handle_future(future):
-            exception = future.exception()
-            if exception:
-                shutdown(1)
-
         # RIB Tasks
         if len(routeviews_collectors) > 0:
             # Only if there are Route Views collectors
             future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip(list(set(
                 [f"{host}.routeviews.org" for host, _ in routeviews_collectors])), rv_rib_urls)), 'route-views', events)
-            future.add_done_callback(handle_future)
             futures.append(asyncio.wrap_future(future))
 
         if len(ris_collectors) > 0:  
             # Only if there are RIS collectors
             future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip(list(set(
                 [f"{host}.ripe.net" for host in ris_collectors])), [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', events)
-            future.add_done_callback(handle_future)
             futures.append(asyncio.wrap_future(future))
 
         # Kafka Tasks
@@ -724,30 +735,24 @@ async def main():
             # Only if there are Route Views collectors
             future = loop.run_in_executor(executor, kafka_task, routeviews_consumer_conf, timestamps, list(zip([f"{host}.routeviews.org" for host, _ in routeviews_collectors],
                 [f'routeviews.{host}.{peer}.bmp_raw' for host, peer in routeviews_collectors])), [f'routeviews.{host}.{peer}.bmp_raw' for host, peer in routeviews_collectors], queue, db, status, BATCH_SIZE, 'route-views', events)
-            future.add_done_callback(handle_future)
             futures.append(asyncio.wrap_future(future))
 
         if len(ris_collectors) > 0:
             # Only if there are RIS collectors
             future = loop.run_in_executor(executor, kafka_task, ris_consumer_conf, timestamps, list(zip([f"{host}.ripe.net" for host in ris_collectors],
                 ['ris-live' for _ in ris_collectors])), ['ris-live'], queue, db, status, BATCH_SIZE, 'ris', events)
-            future.add_done_callback(handle_future)
             futures.append(asyncio.wrap_future(future))
 
         # Sender Tasks
         for host, port in openbmp_collectors:
             future = loop.run_in_executor(
                 executor, sender_task, queue, host, port, db, status)
-            future.add_done_callback(handle_future)
             futures.append(asyncio.wrap_future(future))
 
         # Keep the logging task and main loop alive
         await asyncio.gather(task, *futures)
+        logger.info("All tasks finished")
     except Exception as e:
-        logger.error("Exception", exc_info=True)
+        logger.error("Fatal error", exc_info=True)
     finally:
-        shutdown(0)
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        shutdown(1)

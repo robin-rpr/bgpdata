@@ -28,6 +28,9 @@ __pycache__
 # Libsass
 static/styles/*.css
 
+# Cache
+.cache/
+
 # =========================
 # Operating System Files
 # =========================
