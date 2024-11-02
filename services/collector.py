@@ -135,7 +135,7 @@ def on_assign(consumer, partitions, db):
             # Set the offset for each partition
             for partition in partitions:
                 last_offset = db.get(
-                    f'{partition.topic}_{partition.partition}'.encode('utf-8')) or None
+                    f'offsets_{partition.topic}_{partition.partition}'.encode('utf-8')) or None
                 # If the offset is stored, set it
                 if last_offset is not None:
                     # +1 because we start from the next message
@@ -158,6 +158,7 @@ async def logging_task(status, queue):
         status (dict): A dictionary containing the following keys:
             - time_lag (timedelta): The current time lag of the messages.
             - bytes_sent (int): The number of bytes sent since the last log.
+            - bytes_received (int): The number of bytes received since the last log.
             - activity (str): The current activity of the collector.
         queue (queueio.Queue): The queue containing the messages to send.
     """
@@ -165,37 +166,42 @@ async def logging_task(status, queue):
         seconds = 10
         await asyncio.sleep(seconds)  # Sleep for n seconds before logging
 
-        # Compute kbps_counter
+        # Compute kbit/s
         bytes_sent = status['bytes_sent']
+        bytes_received = status['bytes_received']
         # Convert bytes to kilobits per second
-        kbps_counter = (bytes_sent * 8) / seconds / 1000
+        kbps_sent = (bytes_sent * 8) / seconds / 1000
+        kbps_received = (bytes_received * 8) / seconds / 1000
 
         if status['activity'] == "INITIALIZING":
             # Initializing
-            logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
-                        f"Transmitting at ~{kbps_counter:.2f} kbit/s")
+            logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| ***")
         elif status['activity'] == "RIB_INJECTION":
             # RIB Injection
             logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
-                        f"Transmitting at ~{kbps_counter:.2f} kbit/s, "
+                        f"Receiving at ~{kbps_received:.2f} kbit/s, "
+                        f"Sending at ~{kbps_sent:.2f} kbit/s, "
                         f"Queue size: ~{queue.qsize()}")
         elif status['activity'] == "KAFKA_POLLING":
             # Kafka Polling
             logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
                         f"Time lag: ~{status['time_lag'].total_seconds()} seconds, "
-                        f"Transmitting at ~{kbps_counter:.2f} kbit/s, "
+                        f"Receiving at ~{kbps_received:.2f} kbit/s, "
+                        f"Sending at ~{kbps_sent:.2f} kbit/s, "
                         f"Queue size: ~{queue.qsize()}")
         elif status['activity'] == "TERMINATING":
             # Terminating
             logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
-                        f"Transmitting at ~{kbps_counter:.2f} kbit/s, "
+                        f"Receiving at ~{kbps_received:.2f} kbit/s, "
+                        f"Sending at ~{kbps_sent:.2f} kbit/s, "
                         f"Queue size: ~{queue.qsize()}")
 
-        # Reset bytes_sent
+        # Reset trackers
         status['bytes_sent'] = 0
+        status['bytes_received'] = 0
 
 
-def rib_task(queue, db, status, timestamps, collectors, provider, events):
+def rib_task(queue, db, status, collectors, provider, events):
     """
     Synchronous task to inject RIB messages from MRT Data Dumps into the queue.
 
@@ -205,8 +211,8 @@ def rib_task(queue, db, status, timestamps, collectors, provider, events):
         status (dict): A dictionary containing the following keys:
             - time_lag (timedelta): The current time lag of the messages.
             - bytes_sent (int): The number of bytes sent since the last log.
+            - bytes_received (int): The number of bytes received since the last log.
             - activity (str): The current activity of the collector.
-        timestamps (dict): A dictionary containing the latest timestamps of the RIBs.
         collectors (list): A list of tuples containing the host and URL of the RIB Data Dumps.
         provider (str): The provider of the MRT Data Dumps.
         events (dict): A dictionary containing the following keys:
@@ -230,8 +236,9 @@ def rib_task(queue, db, status, timestamps, collectors, provider, events):
 
             batch = []
 
-            if host not in timestamps:
-                timestamps[host] = -1
+            # Initialize the timestamp if it's not set
+            if db.get(f'timestamps_{host}'.encode('utf-8')) is None:
+                db.set(f'timestamps_{host}'.encode('utf-8'), b'\xff')
 
             while True:
                 try:
@@ -241,8 +248,8 @@ def rib_task(queue, db, status, timestamps, collectors, provider, events):
 
                     for elem in parser:
                         # Update the timestamp if it's the freshest
-                        if elem['timestamp'] > timestamps[host]:
-                            timestamps[host] = elem['timestamp']
+                        if int(elem['timestamp']) > int.from_bytes(db.get(f'timestamps_{host}'.encode('utf-8')), byteorder='big') / 1000:
+                            db.set(f'timestamps_{host}'.encode('utf-8'), int(elem['timestamp']).to_bytes(8, byteorder='big'))
 
                         # Construct the BMP message
                         messages = BMPv3.construct(
@@ -275,6 +282,9 @@ def rib_task(queue, db, status, timestamps, collectors, provider, events):
                             0
                         )
 
+                        # Update the bytes received counter
+                        status['bytes_received'] += sum(len(message) for message in messages)
+
                         # Add the messages to the batch
                         batch.extend(messages)
 
@@ -297,13 +307,12 @@ def rib_task(queue, db, status, timestamps, collectors, provider, events):
     events[f"{provider}_injection"].set()
 
 
-def kafka_task(configuration, timestamps, collectors, topics, queue, db, status, batch_size, provider, events):
+def kafka_task(configuration, collectors, topics, queue, db, status, batch_size, provider, events):
     """
     Synchronous task to poll a batch of messages from Kafka and add them to the queue.
 
     Args:
         configuration (dict): The configuration of the Kafka consumer.
-        timestamps (dict): A dictionary containing the latest timestamps of the RIBs.
         collectors (list): A list of tuples containing the host and topic of the collectors.
         topics (list): A list of topics to subscribe to.
         queue (queueio.Queue): The queue to add the messages to.
@@ -311,6 +320,7 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
         status (dict): A dictionary containing the following keys:
             - time_lag (timedelta): The current time lag of the messages.
             - bytes_sent (int): The number of bytes sent since the last log.
+            - bytes_received (int): The number of bytes received since the last log.
             - activity (str): The current activity of the collector.
         batch_size (int): Number of messages to fetch at once.
         provider (str): The provider of the messages.
@@ -352,14 +362,14 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
         oldest_timestamps = {}
 
         for host, topic in collectors:
-            # Verify that the collector is known
-            if host not in timestamps:
-                raise Exception(
-                    f"Attempted to provision {host} of {provider} but it's unknown")
-
             # Assure the oldest timestamp for the topic (see comment above)
-            oldest_timestamps[topic] = min(oldest_timestamps.get(
-                topic, timestamps[host]), timestamps[host])
+            oldest_timestamps[topic] = min(
+                oldest_timestamps.get(
+                    topic,
+                    int.from_bytes(db.get(f'timestamps_{host}'.encode('utf-8')), byteorder='big') / 1000
+                ),
+                int.from_bytes(db.get(f'timestamps_{host}'.encode('utf-8')), byteorder='big') / 1000
+            )
 
             # Get the timestamp of the recorded RIB
             timestamp = datetime.fromtimestamp(oldest_timestamps[topic])
@@ -407,7 +417,10 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
                     events[key].wait()
 
             # Mark the RIBs injection as fulfilled
-            db.set(b'injection_ended', b'\x01')
+            db.set(b'injections_ended', b'\x01')
+
+    # Log the provision
+    logger.info(f"Subscribed to {provider} Kafka Consumer")
 
     # Poll messages from Kafka
     while True:
@@ -428,10 +441,14 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
             # Process the message
             value = msg.value()
             topic = msg.topic()
+            offset = msg.offset()
             partition = msg.partition()
 
             # Initialize the messages list
             messages = []
+
+            # Update the bytes received counter
+            status['bytes_received'] += len(value)
 
             match provider:
                 case 'route-views':
@@ -450,6 +467,9 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
                     # HACK: Dummy timestamp for now
                     timestamp = datetime.now()
 
+                    # HACK: Dummy approximated time lag preceived by the consumer
+                    status['time_lag'] = datetime.now() - datetime.fromtimestamp(timestamp)
+
                     # HACK: Untempered message for now
                     messages.append(value)
                 case 'ris':
@@ -465,16 +485,14 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
 
                     # Skip unknown collectors
                     # TODO: We should probably log this, but not as an error, and not for every message
-                    if host not in timestamps:
+                    if db.get(f'timestamps_{host}'.encode('utf-8')) is None:
                         continue
-
-                    # Check if the RIB injection for this collector is corrupted
-                    if timestamps[host] == -1:
-                        raise Exception(
-                            f"RIB injection for {host} is corrupted, no MRT records ingested")
+                    
+                    # Update the approximated time lag preceived by the consumer
+                    status['time_lag'] = datetime.now() - datetime.fromtimestamp(timestamp)
 
                     # Skip messages before the ingested collector's RIB or before the collector was seen
-                    if timestamp > timestamps[host]:
+                    if timestamp > int.from_bytes(db.get(f'timestamps_{host}'.encode('utf-8')), byteorder='big') / 1000:
                         # TODO: We are estimating the time gap between the message and the ingested RIB very statically,
                         #       but we should approach this more accurately, e.g. approximate the time gap through reverse graph analysis.
                         continue
@@ -497,12 +515,8 @@ def kafka_task(configuration, timestamps, collectors, topics, queue, db, status,
                         marshal.get('med', None)
                     ))
 
-            # Update the approximated time lag preceived by the consumer
-            status['time_lag'] = datetime.now(
-            ) - datetime.fromtimestamp(timestamp)
-
             for message in messages:
-                queue.put((message, msg.offset(), provider, topic, partition))
+                queue.put((message, offset, provider, topic, partition))
 
 
 def sender_task(queue, host, port, db, status):
@@ -518,6 +532,7 @@ def sender_task(queue, host, port, db, status):
         status (dict): A dictionary containing the following keys:
             - time_lag (timedelta): The current time lag of the messages.
             - bytes_sent (int): The number of bytes sent since the last log.
+            - bytes_received (int): The number of bytes received since the last log.
             - activity (str): The current activity of the collector.
     """
     # Whether a message has been sent
@@ -548,11 +563,11 @@ def sender_task(queue, host, port, db, status):
                     if not sent_message:
                         # At least one message has been sent
                         sent_message = True  # Mark that a message has been sent
-                        db.set(b'injection_started', b'\x01')
+                        db.set(b'injections_started', b'\x01')
                     
                     if partition != -1:
                         # Save offset to RocksDB only if it's from Kafka
-                        key = f'{topic}_{partition}'.encode('utf-8')
+                        key = f'offsets_{topic}_{partition}'.encode('utf-8')
                         db.set(key, offset.to_bytes(16, byteorder='big'))
 
                     # Mark the message as done
@@ -618,11 +633,9 @@ async def main():
     status = {
         'time_lag': timedelta(0),              # Initialize time lag
         'bytes_sent': 0,                       # Initialize bytes sent counter
+        'bytes_received': 0,                   # Initialize bytes received counter
         'activity': "INITIALIZING",            # Initialize activity
     }
-
-    # Keep track of freshest timestamps of the RIBs
-    timestamps = {}
 
     # Create a ThreadPoolExecutor for sender tasks
     workers = (2 if len(ris_collectors) > 0 else 0) + \
@@ -675,14 +688,14 @@ async def main():
             events["ris_provision"] = threading.Event()
 
         # Whether the RIBs injection started
-        injection_started = True if db.get(
-            b'injection_started') == b'\x01' else False
+        injections_started = True if db.get(
+            b'injections_started') == b'\x01' else False
         # Whether the RIBs injection ended (important)
-        injection_ended = True if db.get(
-            b'injection_ended') == b'\x01' else False
+        injections_ended = True if db.get(
+            b'injections_ended') == b'\x01' else False
 
         # We need to ensure all RIBs are fully injected
-        if injection_started and injection_ended:
+        if injections_started and injections_ended:
             # Everything is initialized
             if len(routeviews_collectors) > 0:
                 events['route-views_injection'].set()
@@ -691,7 +704,7 @@ async def main():
                 events['ris_injection'].set()
                 events['ris_provision'].set()
 
-        elif injection_started and not injection_ended:
+        elif injections_started and not injections_ended:
             # Database is corrupted, we need to exit
             logger.error("RIBs injection is corrupted, exiting...")
             raise Exception("Database is corrupted, exiting...")
@@ -720,26 +733,26 @@ async def main():
         # RIB Tasks
         if len(routeviews_collectors) > 0:
             # Only if there are Route Views collectors
-            future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip(list(set(
+            future = loop.run_in_executor(executor, rib_task, queue, db, status, list(zip(list(set(
                 [f"{host}.routeviews.org" for host, _ in routeviews_collectors])), rv_rib_urls)), 'route-views', events)
             futures.append(asyncio.wrap_future(future))
 
         if len(ris_collectors) > 0:  
             # Only if there are RIS collectors
-            future = loop.run_in_executor(executor, rib_task, queue, db, status, timestamps, list(zip(list(set(
+            future = loop.run_in_executor(executor, rib_task, queue, db, status, list(zip(list(set(
                 [f"{host}.ripe.net" for host in ris_collectors])), [f"https://data.ris.ripe.net/{i}/latest-bview.gz" for i in ris_collectors])), 'ris', events)
             futures.append(asyncio.wrap_future(future))
 
         # Kafka Tasks
         if len(routeviews_collectors) > 0:
             # Only if there are Route Views collectors
-            future = loop.run_in_executor(executor, kafka_task, routeviews_consumer_conf, timestamps, list(zip([f"{host}.routeviews.org" for host, _ in routeviews_collectors],
+            future = loop.run_in_executor(executor, kafka_task, routeviews_consumer_conf, list(zip([f"{host}.routeviews.org" for host, _ in routeviews_collectors],
                 [f'routeviews.{host}.{peer}.bmp_raw' for host, peer in routeviews_collectors])), [f'routeviews.{host}.{peer}.bmp_raw' for host, peer in routeviews_collectors], queue, db, status, BATCH_SIZE, 'route-views', events)
             futures.append(asyncio.wrap_future(future))
 
         if len(ris_collectors) > 0:
             # Only if there are RIS collectors
-            future = loop.run_in_executor(executor, kafka_task, ris_consumer_conf, timestamps, list(zip([f"{host}.ripe.net" for host in ris_collectors],
+            future = loop.run_in_executor(executor, kafka_task, ris_consumer_conf, list(zip([f"{host}.ripe.net" for host in ris_collectors],
                 ['ris-live' for _ in ris_collectors])), ['ris-live'], queue, db, status, BATCH_SIZE, 'ris', events)
             futures.append(asyncio.wrap_future(future))
 
