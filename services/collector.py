@@ -448,7 +448,7 @@ def kafka_task(configuration, collectors, topics, queue, db, status, batch_size,
     # Poll messages from Kafka
     while True:
         # Poll a batch of messages
-        msgs = consumer.consume(batch_size, timeout=0.01)
+        msgs = consumer.consume(batch_size, timeout=0.1)
 
         if not msgs:
             continue
