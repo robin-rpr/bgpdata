@@ -63,11 +63,12 @@ routeviews_consumer_conf = {
     'group.id': f"bgpdata-{hostname}",
     'partition.assignment.strategy': 'roundrobin',
     'enable.auto.commit': False,
-    'auto.offset.reset': 'earliest',
     'security.protocol': 'SASL_SSL',
     'sasl.mechanism': 'PLAIN',
     'sasl.username': os.getenv('ROUTEVIEWS_USERNAME'),
     'sasl.password': os.getenv('ROUTEVIEWS_PASSWORD'),
+    'fetch.max.bytes': 50 * 1024 * 1024, # 50 MB
+    'session.timeout.ms': 30000,  # For stable group membership
 }
 
 # RIS Kafka Consumer configuration
@@ -76,11 +77,12 @@ ris_consumer_conf = {
     'group.id': f"bgpdata-{hostname}",
     'partition.assignment.strategy': 'roundrobin',
     'enable.auto.commit': False,
-    'auto.offset.reset': 'earliest',
     'security.protocol': 'SASL_SSL',
     'sasl.mechanism': 'PLAIN',
     'sasl.username': os.getenv('RIS_USERNAME'),
     'sasl.password': os.getenv('RIS_PASSWORD'),
+    'fetch.max.bytes': 50 * 1024 * 1024, # 50 MB
+    'session.timeout.ms': 30000,  # For stable group membership
 }
 
 # RIS Avro Encoding schema
@@ -133,21 +135,20 @@ def on_assign(consumer, partitions, db):
         if partitions[0].error:
             logger.error(f"Rebalance error: {partitions[0].error}")
         else:
-            logger.info(
-                f"Assigned partitions: {[p.partition for p in partitions]}")
-
             # Set the offset for each partition
             for partition in partitions:
                 last_offset = db.get(
                     f'offsets_{partition.topic}_{partition.partition}'.encode('utf-8')) or None
+                
                 # If the offset is stored, set it
                 if last_offset is not None:
                     # +1 because we start from the next message
-                    partition.offset = int.from_bytes(
-                        last_offset, byteorder='big') + 1
-                    logger.info(
-                        f"Setting offset for partition {partition.partition} of {partition.topic} to {partition.offset}")
-
+                    partition.offset = int.from_bytes(last_offset, byteorder='big') + 1
+                
+                # Log the assigned offset
+                logger.info(
+                    f"Assigned offset for partition {partition.partition} of {partition.topic} to {partition.offset}")
+                
             # Assign the partitions to the consumer
             consumer.assign(partitions)
     except Exception as e:
@@ -380,8 +381,8 @@ def kafka_task(configuration, collectors, topics, queue, db, status, batch_size,
     # If RIBs are injected but not yet provisioned
     if not events[f"{provider}_provision"].is_set():
         # Seek to desired offsets based on timestamps
-        # Define a time delta (e.g., 1 hour)
-        time_delta = timedelta(hours=1)
+        # Define a time delta (e.g., 15 minutes)
+        time_delta = timedelta(minutes=15)
 
         # Keep track of the oldest timestamp for each topic
         # Why? In case multiple collectors stream to the same topic
@@ -397,7 +398,8 @@ def kafka_task(configuration, collectors, topics, queue, db, status, batch_size,
                 struct.unpack('>d', db.get(f'timestamps_{host}'.encode('utf-8')) or b'\x00\x00\x00\x00\x00\x00\x00\x00')[0]
             )
 
-            # Get the timestamp of the recorded RIB
+        for host, topic in collectors:
+            # Get the oldest timestamp for the topic
             timestamp = datetime.fromtimestamp(oldest_timestamps[topic])
 
             # Calculate the target time
@@ -409,30 +411,25 @@ def kafka_task(configuration, collectors, topics, queue, db, status, batch_size,
             metadata = consumer.list_topics(topic, timeout=10)
             partitions = metadata.topics[topic].partitions.keys()
 
-            # Create TopicPartition instances with the target timestamp
-            topic_partitions = [TopicPartition(
-                topic, p, target_timestamp_ms) for p in partitions]
+            # Get offsets based on the timestamp
+            offsets = consumer.offsets_for_times([TopicPartition(topic, p, target_timestamp_ms) for p in partitions])
 
-            # Query Kafka for the offsets
-            offsets = consumer.offsets_for_times(topic_partitions, timeout=10)
+            # Check if the offset is valid and not -1 (which means no valid offset was found for the given timestamp)
+            valid_offsets = [tp for tp in offsets if tp.offset != -1]
 
-            # Extract the found offsets
-            found_offsets = []
-            for tp in offsets:
-                if tp.offset == -1:
-                    # Timestamp is greater than all message timestamps in the partition
-                    # Start from the latest offset
-                    latest = consumer.get_watermark_offsets(tp)
-                    tp.offset = latest[1]
-                found_offsets.append(tp)
+            if valid_offsets:
+                # Apply the offsets to RocksDB
+                for tp in valid_offsets:
+                    db.set(
+                        f'offsets_{tp.topic}_{tp.partition}'.encode('utf-8'),
+                        tp.offset.to_bytes(16, byteorder='big')
+                    )
 
-            # Assign the found offsets
-            consumer.assign(found_offsets)
-
-            # Log the assigned offsets
-            for tp in found_offsets:
-                logger.info(
-                    f"Assigned topic {tp.topic} partition {tp.partition} to offset {tp.offset}")
+                # Inform the consumer about the assigned offsets
+                consumer.assign(valid_offsets)
+            else:
+                # No valid offsets found for the given timestamp
+                raise Exception("No valid offsets found for the given timestamp")
 
             # Mark Consumer as provisioned
             events[f"{provider}_provision"].set()
@@ -451,7 +448,7 @@ def kafka_task(configuration, collectors, topics, queue, db, status, batch_size,
     # Poll messages from Kafka
     while True:
         # Poll a batch of messages
-        msgs = consumer.consume(batch_size, timeout=0.1)
+        msgs = consumer.consume(batch_size, timeout=0.01)
 
         if not msgs:
             continue
@@ -459,10 +456,13 @@ def kafka_task(configuration, collectors, topics, queue, db, status, batch_size,
         for msg in msgs:
             if msg.error():
                 if msg.error().code() == KafkaError._PARTITION_EOF:
+                    # We are too fast for Kafka, sleep a bit
                     logger.info(f"End of partition reached: {msg.error()}")
-                    raise KafkaException(msg.error())
+                    time.sleep(1)
+                    continue
                 elif msg.error().code() == KafkaError._OFFSET_OUT_OF_RANGE:
-                    logger.critical("Offset out of range error encountered. Stopping script to prevent corruption.")
+                    # We were too slow for Kafka, this needs to be fixed manually
+                    logger.critical("Offset out of range error encountered")
                     raise KafkaException(msg.error())
                 else:
                     logger.error(f"Kafka error: {msg.error()}", exc_info=True)
@@ -649,9 +649,8 @@ async def main():
     # Wait to not stress the system
     time.sleep(5)
 
-    # Number of messages to queue to the OpenBMP collector (1M is ~1GB Memory)
-    QUEUE_SIZE = 10000000
-    BATCH_SIZE = 10000    # Number of messages to fetch at once from Kafka
+    QUEUE_SIZE = 10000000 # Number of messages to queue to the OpenBMP collector (1M is ~1GB Memory)
+    BATCH_SIZE = 100000   # Number of messages to fetch at once from Kafka
 
     # Get the running loop
     loop = asyncio.get_running_loop()
