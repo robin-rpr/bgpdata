@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: core-web-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: core-web
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openbmp-kafka-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: openbmp-kafka
+  ports:
+  - protocol: TCP
+    port: 9092
+    targetPort: 9092

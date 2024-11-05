@@ -1,0 +1,47 @@
+replicaConfig:
+  coreWeb:
+    replicaCount: 3
+  coreCollector:
+    ris:
+      coreCollectorCount: 1
+      openbmpCollectorCount: 12
+    routeViews:
+      coreCollectorCount: 21
+      openbmpCollectorCount: 11
+  coreAggregator:
+    replicaCount: 1
+
+databaseConfig:
+  coreDb:
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "2Gi"
+      limits:
+        cpu: "1"
+        memory: "4Gi"
+    replicas: 3  # For high availability
+  openbmpDb:
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "2Gi"
+      limits:
+        cpu: "1"
+        memory: "4Gi"
+    replicas: 3  # For high availability
+
+kafkaConfig:
+  openbmpKafka:
+    replicas: 3  # High availability with a multi-node setup
+    resources:
+      requests:
+        cpu: "1"
+        memory: "4Gi"
+      limits:
+        cpu: "2"
+        memory: "8Gi"
+
+loadBalancerConfig:
+  enabled: true
+  type: LoadBalancer  # Using MetalLB for external traffic

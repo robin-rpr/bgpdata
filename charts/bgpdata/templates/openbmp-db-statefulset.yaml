@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: openbmp-db
+spec:
+  replicas: {{ .Values.databaseConfig.openbmpDb.replicas }}
+  selector:
+    matchLabels:
+      app: openbmp-db
+  serviceName: openbmp-db
+  template:
+    metadata:
+      labels:
+        app: openbmp-db
+    spec:
+      containers:
+      - name: openbmp-db
+        image: openbmp/postgres:2.2.1
+        resources:
+          requests:
+            cpu: {{ .Values.databaseConfig.openbmpDb.resources.requests.cpu }}
+            memory: {{ .Values.databaseConfig.openbmpDb.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values.databaseConfig.openbmpDb.resources.limits.cpu }}
+            memory: {{ .Values.databaseConfig.openbmpDb.resources.limits.memory }}
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          value: "openbmp"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: openbmp-db-secret
+              key: password
+        - name: POSTGRES_DB
+          value: "openbmp"
+        volumeMounts:
+        - name: openbmp-db-data
+          mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+  - metadata:
+      name: openbmp-db-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 20Gi

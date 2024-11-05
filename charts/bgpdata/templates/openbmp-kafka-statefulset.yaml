@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: openbmp-kafka
+spec:
+  replicas: {{ .Values.kafkaConfig.openbmpKafka.replicas }}
+  selector:
+    matchLabels:
+      app: openbmp-kafka
+  serviceName: openbmp-kafka
+  template:
+    metadata:
+      labels:
+        app: openbmp-kafka
+    spec:
+      containers:
+      - name: kafka
+        image: confluentinc/cp-kafka:7.1.1
+        ports:
+        - containerPort: 9092
+        env:
+        - name: KAFKA_BROKER_ID
+          value: "{{ .Values.kafkaConfig.openbmpKafka.replicas }}"
+        - name: KAFKA_ZOOKEEPER_CONNECT
+          value: "openbmp-zookeeper:2181"
+        - name: KAFKA_ADVERTISED_LISTENERS
+          value: PLAINTEXT://openbmp-kafka:29092
+        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+          value: "3"
+        resources:
+          requests:
+            cpu: {{ .Values.kafkaConfig.openbmpKafka.resources.requests.cpu }}
+            memory: {{ .Values.kafkaConfig.openbmpKafka.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values.kafkaConfig.openbmpKafka.resources.limits.cpu }}
+            memory: {{ .Values.kafkaConfig.openbmpKafka.resources.limits.memory }}
+        volumeMounts:
+        - name: kafka-data
+          mountPath: /var/lib/kafka/data
+  volumeClaimTemplates:
+  - metadata:
+      name: kafka-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 30Gi

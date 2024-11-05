@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: core-db
+spec:
+  replicas: {{ .Values.databaseConfig.coreDb.replicas }}
+  selector:
+    matchLabels:
+      app: core-db
+  serviceName: core-db
+  template:
+    metadata:
+      labels:
+        app: core-db
+    spec:
+      containers:
+      - name: core-db
+        image: timescale/timescaledb:latest-pg13
+        resources:
+          requests:
+            cpu: {{ .Values.databaseConfig.coreDb.resources.requests.cpu }}
+            memory: {{ .Values.databaseConfig.coreDb.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values.databaseConfig.coreDb.resources.limits.cpu }}
+            memory: {{ .Values.databaseConfig.coreDb.resources.limits.memory }}
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          value: "core"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: core-db-secret
+              key: password
+        - name: POSTGRES_DB
+          value: "default"
+        volumeMounts:
+        - name: core-db-data
+          mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+  - metadata:
+      name: core-db-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 10Gi

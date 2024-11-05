@@ -562,29 +562,24 @@ def sender_task(queue, host, port, db, status):
         host (str): The host of the OpenBMP collector.
         port (int): The port of the OpenBMP collector.
         db (rocksdbpy.DB): The RocksDB database to store the offset.
-        status (dict): A dictionary containing the following keys:
-            - time_lag (timedelta): The current time lag of the messages.
-            - time_preceived (dict): A dictionary containing the latest read timestamp for each host.
-            - bytes_sent (int): The number of bytes sent since the last log.
-            - bytes_received (int): The number of bytes received since the last log.
-            - activity (str): The current activity of the collector.
+        status (dict): A dictionary containing the current status and statistics.
     """
-    # Whether a message has been sent
     sent_message = False
+    backpressure_threshold = 1.0  # Threshold in seconds to detect backpressure
+    send_delay = 0.0  # Initial delay between sends
 
-    # Establish a blocking TCP connection
     try:
         with socket.create_connection((host, port), timeout=60) as sock:
             logger.info(f"Connected to OpenBMP collector at {host}:{port}")
 
             while True:
                 try:
-                    # Check if the connection is still alive
+                    # Ensure the connection is alive
                     ready_to_read, _, _ = select.select([sock], [], [], 0)
-                    if ready_to_read:
-                        # Attempt to read data to verify connection is open
-                        if not sock.recv(1, socket.MSG_PEEK):
-                            raise ConnectionError("TCP connection closed by the peer")
+                    if ready_to_read and not sock.recv(1, socket.MSG_PEEK):
+                        raise ConnectionError("TCP connection closed by the peer")
+
+                    start_time = time.time()  # Start timing the send operation
 
                     # Get the message from the queue
                     message, offset, _, topic, partition = queue.get()
@@ -593,28 +588,36 @@ def sender_task(queue, host, port, db, status):
                     sock.sendall(message)
                     status['bytes_sent'] += len(message)
 
+                    # Measure the time taken for sending the message
+                    send_time = time.time() - start_time
+                    if send_time > backpressure_threshold:
+                        logger.warning(f"Detected backpressure: sending took {send_time:.2f}s")
+                        send_delay = min(send_delay + 0.1, 10.0)  # Increase delay up to 10 seconds
+                    else:
+                        send_delay = max(send_delay - 0.05, 0.0)  # Gradually reduce delay if no backpressure
+
+                    # Apply the delay before the next send if needed
+                    if send_delay > 0:
+                        logger.debug(f"Applying send delay of {send_delay:.2f}s due to backpressure")
+                        time.sleep(send_delay)
+
                     if not sent_message:
-                        # At least one message has been sent
                         sent_message = True  # Mark that a message has been sent
                         db.set(b'injections_started', b'\x01')
-                    
+
                     if partition != -1:
-                        # Save offset to RocksDB only if it's from Kafka
                         key = f'offsets_{topic}_{partition}'.encode('utf-8')
                         db.set(key, offset.to_bytes(16, byteorder='big'))
 
-                    # Mark the message as done
-                    queue.task_done()
+                    queue.task_done()  # Mark the message as processed
 
                 except queueio.Empty:
-                    # If the queue is empty, let the loop rest a bit
-                    time.sleep(0.1)
+                    time.sleep(0.1)  # Sleep a bit if the queue is empty
                 except ConnectionError as e:
                     logger.error("TCP connection lost", exc_info=True)
                     raise e
                 except Exception as e:
-                    logger.error(
-                        "Error sending message over TCP", exc_info=True)
+                    logger.error("Error sending message over TCP", exc_info=True)
                     raise e
 
     except Exception as e:

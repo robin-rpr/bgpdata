@@ -1,0 +1,48 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: core-web-ingress
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web, websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  rules:
+  - host: core-web.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: core-web-service
+            port:
+              number: 80
+  tls:
+  - hosts:
+    - core-web.example.com
+    secretName: core-web-tls-secret  # Reference to a TLS secret for HTTPS
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openbmp-kafka-ingress
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web, websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  rules:
+  - host: openbmp-kafka.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: openbmp-kafka-service
+            port:
+              number: 9092
+  tls:
+  - hosts:
+    - openbmp-kafka.example.com
+    secretName: openbmp-kafka-tls-secret  # Reference to a TLS secret for HTTPS

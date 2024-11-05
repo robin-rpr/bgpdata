@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core-web
+spec:
+  replicas: {{ .Values.replicaConfig.coreWeb.replicaCount }}
+  selector:
+    matchLabels:
+      app: core-web
+  template:
+    metadata:
+      labels:
+        app: core-web
+    spec:
+      containers:
+      - name: core-web
+        image: your-core-web-image
+        ports:
+        - containerPort: 8080
+        env:
+        - name: POSTGRESQL_DATABASE
+          value: postgresql+asyncpg://core:core@core-db:5432/default
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "1"
+            memory: "2Gi"
+      serviceAccountName: default
