@@ -1,10 +1,10 @@
-{{- range $index, $collector := .Values."core-services".collectors.ris }}
+{{- range $index, $collector := .Values."core-services".collectors.providers.ris }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: core-collector-ris-{{ $collector.name }}
 spec:
-  replicas: {{ $.Values.collectors.ris.count }}
+  replicas: 1
   selector:
     matchLabels:
       app: core-collector
@@ -23,6 +23,13 @@ spec:
         image: bgpdata/bgpdata:{{ .Chart.AppVersion }}
         command: ["python"]
         args: ["app.py", "--service", "collector"]
+        resources:
+          requests:
+            cpu: {{ .Values."core-services".collectors.resources.requests.cpu }}
+            memory: {{ .Values."core-services".collectors.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values."core-services".collectors.resources.limits.cpu }}
+            memory: {{ .Values."core-services".collectors.resources.limits.memory }}
         env:
         - name: POSTGRESQL_HOST
           value: core-db
@@ -48,13 +55,13 @@ spec:
 ---
 {{- end }}
 
-{{- range $index, $collector := .Values."core-services".collectors."route-views" }}
+{{- range $index, $collector := .Values."core-services".collectors.providers."route-views" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: core-collector-routeviews-{{ $collector.name }}
 spec:
-  replicas: {{ $.Values."core-services".collectors."route-views"."instance-count" }}
+  replicas: 1
   selector:
     matchLabels:
       app: core-collector
@@ -72,6 +79,13 @@ spec:
         image: bgpdata/bgpdata:{{ .Chart.AppVersion }}
         command: ["python"]
         args: ["app.py", "--service", "collector"]
+        resources:
+          requests:
+            cpu: {{ .Values."core-services".collectors.resources.requests.cpu }}
+            memory: {{ .Values."core-services".collectors.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values."core-services".collectors.resources.limits.cpu }}
+            memory: {{ .Values."core-services".collectors.resources.limits.memory }}
         env:
         - name: POSTGRESQL_HOST
           value: core-db

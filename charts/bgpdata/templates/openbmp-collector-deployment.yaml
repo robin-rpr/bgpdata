@@ -1,4 +1,4 @@
-{{- range $i, $openbmp := until .Values."openbmp-services".ris."instance-count" }}
+{{- range $i, $openbmp := until .Values."openbmp-services".providers.ris."instance-count" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -29,6 +29,13 @@ spec:
       containers:
       - name: openbmp-collector
         image: openbmp/collector:2.2.3
+        resources:
+          requests:
+            cpu: {{ .Values."openbmp-services".collectors.resources.requests.cpu }}
+            memory: {{ .Values."openbmp-services".collectors.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values."openbmp-services".collectors.resources.limits.cpu }}
+            memory: {{ .Values."openbmp-services".collectors.resources.limits.memory }}
         livenessProbe:
           tcpSocket:
             port: 5000
@@ -47,7 +54,7 @@ spec:
 ---
 {{- end }}
 
-{{- range $i, $openbmp := until .Values."openbmp-services"."route-views"."instance-count" }}
+{{- range $i, $openbmp := until .Values."openbmp-services".providers."route-views"."instance-count" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -77,6 +84,25 @@ spec:
       containers:
       - name: openbmp-collector
         image: openbmp/collector:2.2.3
+        resources:
+          requests:
+            cpu: {{ .Values."openbmp-services".collectors.resources.requests.cpu }}
+            memory: {{ .Values."openbmp-services".collectors.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values."openbmp-services".collectors.resources.limits.cpu }}
+            memory: {{ .Values."openbmp-services".collectors.resources.limits.memory }}
+        livenessProbe:
+          tcpSocket:
+            port: 5000
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          tcpSocket:
+            port: 5000
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
         env:
         - name: KAFKA_FQDN
           value: openbmp-kafka:29092
