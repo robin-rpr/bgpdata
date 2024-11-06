@@ -670,8 +670,6 @@ class BMPv3:
             attr_value = struct.pack('!I', med)
             path_attributes += struct.pack('!BBB', attr_flags, attr_type, attr_length) + attr_value
 
-        # TODO:Additional attributes can be added similarly
-
         return path_attributes
 
     @staticmethod
