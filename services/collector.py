@@ -182,7 +182,7 @@ def rib_task(queue, db, status, collectors, provider, events):
         return
 
     # Set the activity
-    status['activity'] = "RIB_INJECTION"
+    status['activity'] = "RIB_DUMP"
     logger.info(f"Initiating RIB Injection from {provider} collectors...")
 
     try:
@@ -296,7 +296,7 @@ def kafka_task(configuration, collectors, topics, queue, db, status, batch_size,
             events[key].wait()
 
     # Set the activity
-    status['activity'] = "KAFKA_POLLING"
+    status['activity'] = "BMP_STREAM"
     logger.info(f"Subscribing to {provider} Kafka Consumer...")
 
     # Create Kafka Consumer
@@ -524,7 +524,7 @@ def sender_task(queue, host, port, db, status):
                     send_time = time.time() - start_time
                     if send_time > backpressure_threshold:
                         logger.warning(f"Detected backpressure: sending took {send_time:.2f}s")
-                        send_delay = min(send_delay + 0.1, 10.0)  # Increase delay up to 10 seconds
+                        send_delay = min(send_delay + 0.1, 5.0)  # Increase delay up to 5 seconds
                     else:
                         send_delay = max(send_delay - 0.05, 0.0)  # Gradually reduce delay if no backpressure
 
@@ -589,14 +589,14 @@ def logging_task(status, queue, db, routeviews_hosts, ris_hosts):
             # Initializing
             logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| ***")
 
-        elif status['activity'] == "RIB_INJECTION":
+        elif status['activity'] == "RIB_DUMP":
             # RIB Injection
             logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
                         f"Receiving at ~{kbps_received:.2f} kbit/s, "
                         f"Sending at ~{kbps_sent:.2f} kbit/s, "
                         f"Queue size: ~{queue.qsize()}")
             
-        elif status['activity'] == "KAFKA_POLLING":
+        elif status['activity'] == "BMP_STREAM":
             # Kafka Polling
             logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
                         f"Receiving at ~{kbps_received:.2f} kbit/s, "
