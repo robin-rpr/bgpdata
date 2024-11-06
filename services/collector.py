@@ -154,78 +154,10 @@ def on_assign(consumer, partitions, db):
     except Exception as e:
         logger.error(f"Error handling assignment: {e}", exc_info=True)
 
-async def logging_task(status, queue, db, routeviews_hosts, ris_hosts):
-    """
-    Asynchronous task to periodically log the most recent timestamp, time lag, current poll interval, and consumption rate.
-    This task runs within the main event loop.
-
-    Args:
-        status (dict): A dictionary containing the following keys:
-            - time_lag (timedelta): The current time lag of the messages.
-            - time_preceived (dict): A dictionary containing the latest read timestamp for each host.
-            - bytes_sent (int): The number of bytes sent since the last log.
-            - bytes_received (int): The number of bytes received since the last log.
-            - activity (str): The current activity of the collector.
-        queue (queue.Queue): The queue containing the messages to send.
-        db (rocksdbpy.DB): The RocksDB database.
-        routeviews_hosts (list): A list of the Route Views hosts.
-        ris_hosts (list): A list of the RIS hosts.
-    """
-    while True:
-        seconds = 10
-        await asyncio.sleep(seconds)  # Sleep for n seconds before logging
-
-        # Compute kbit/s
-        bytes_sent = status['bytes_sent']
-        bytes_received = status['bytes_received']
-        # Convert bytes to kilobits per second
-        kbps_sent = (bytes_sent * 8) / seconds / 1000
-        kbps_received = (bytes_received * 8) / seconds / 1000
-
-        if status['activity'] == "INITIALIZING":
-            # Initializing
-            logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| ***")
-
-        elif status['activity'] == "RIB_INJECTION":
-            # RIB Injection
-            logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
-                        f"Receiving at ~{kbps_received:.2f} kbit/s, "
-                        f"Sending at ~{kbps_sent:.2f} kbit/s, "
-                        f"Queue size: ~{queue.qsize()}")
-            
-        elif status['activity'] == "KAFKA_POLLING":
-            # Kafka Polling
-            logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
-                        f"Receiving at ~{kbps_received:.2f} kbit/s, "
-                        f"Sending at ~{kbps_sent:.2f} kbit/s, "
-                        f"Queue size: ~{queue.qsize()}")
-        
-            for host in routeviews_hosts + ris_hosts:
-                time_lag = status['time_lag']
-                latest_route = struct.unpack('>d', db.get(f'timestamps_{host}'.encode('utf-8')) or b'\x00\x00\x00\x00\x00\x00\x00\x00')[0]
-                hours, remainder = divmod(time_lag.total_seconds(), 3600)
-                minutes, seconds = divmod(remainder, 60)
-                logger.debug(f"{status['activity']}{(16 - len(status['activity'])) * ' '}| "
-                             f"{host}{(22 - len(host)) * ' '}| "
-                             f"At: ~{status['time_preceived'].get(host, '(not measured yet)').strftime('%Y-%m-%d %H:%M:%S') if host in status['time_preceived'] else '(not measured yet)'}, "
-                             f"Time lag: ~{int(hours)}h {int(minutes)}m {int(seconds)}s, "
-                             f"Injects after: {datetime.fromtimestamp(latest_route).strftime('%Y-%m-%d %H:%M:%S')}")
-                
-        elif status['activity'] == "TERMINATING":
-            # Terminating
-            logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
-                        f"Receiving at ~{kbps_received:.2f} kbit/s, "
-                        f"Sending at ~{kbps_sent:.2f} kbit/s, "
-                        f"Queue size: ~{queue.qsize()}")
-
-        # Reset trackers
-        status['bytes_sent'] = 0
-        status['bytes_received'] = 0
-
 
 def rib_task(queue, db, status, collectors, provider, events):
     """
-    Synchronous task to inject RIB messages from MRT Data Dumps into the queue.
+    Task to inject RIB messages from MRT Data Dumps into the queue.
 
     Args:
         queue (queue.Queue): The queue to add the messages to.
@@ -335,7 +267,7 @@ def rib_task(queue, db, status, collectors, provider, events):
 
 def kafka_task(configuration, collectors, topics, queue, db, status, batch_size, provider, events):
     """
-    Synchronous task to poll a batch of messages from Kafka and add them to the queue.
+    Task to poll a batch of messages from Kafka and add them to the queue.
 
     Args:
         configuration (dict): The configuration of the Kafka consumer.
@@ -494,7 +426,7 @@ def kafka_task(configuration, collectors, topics, queue, db, status, batch_size,
                     # TODO (3): We need to keep track of the timestamp of the message
                     #           We do this to be able to show the time lag of the messages.
 
-                    # HACK: Dummy timestamp for now
+                    # HACK: Using a mock timestamp for initial testing
                     timestamp = datetime.now()
 
                     # HACK: Dummy approximated time lag preceived by the consumer
@@ -554,7 +486,7 @@ def kafka_task(configuration, collectors, topics, queue, db, status, batch_size,
 
 def sender_task(queue, host, port, db, status):
     """
-    Synchronous task to transmit messages from the queue to the TCP socket.
+    Task to transmit messages from the queue to the TCP socket.
     Only updates offset in RocksDB once message is successfully sent.
 
     Args:
@@ -625,25 +557,94 @@ def sender_task(queue, host, port, db, status):
         raise e
 
 
+def logging_task(status, queue, db, routeviews_hosts, ris_hosts):
+    """
+    Task to periodically log the most recent timestamp, time lag, current poll interval, and consumption rate.
+    This task runs within the main event loop.
+
+    Args:
+        status (dict): A dictionary containing the following keys:
+            - time_lag (timedelta): The current time lag of the messages.
+            - time_preceived (dict): A dictionary containing the latest read timestamp for each host.
+            - bytes_sent (int): The number of bytes sent since the last log.
+            - bytes_received (int): The number of bytes received since the last log.
+            - activity (str): The current activity of the collector.
+        queue (queue.Queue): The queue containing the messages to send.
+        db (rocksdbpy.DB): The RocksDB database.
+        routeviews_hosts (list): A list of the Route Views hosts.
+        ris_hosts (list): A list of the RIS hosts.
+    """
+    while True:
+        seconds = 10
+        time.sleep(seconds)  # Sleep for n seconds before logging
+
+        # Compute kbit/s
+        bytes_sent = status['bytes_sent']
+        bytes_received = status['bytes_received']
+        # Convert bytes to kilobits per second
+        kbps_sent = (bytes_sent * 8) / seconds / 1000
+        kbps_received = (bytes_received * 8) / seconds / 1000
+
+        if status['activity'] == "INITIALIZING":
+            # Initializing
+            logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| ***")
+
+        elif status['activity'] == "RIB_INJECTION":
+            # RIB Injection
+            logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
+                        f"Receiving at ~{kbps_received:.2f} kbit/s, "
+                        f"Sending at ~{kbps_sent:.2f} kbit/s, "
+                        f"Queue size: ~{queue.qsize()}")
+            
+        elif status['activity'] == "KAFKA_POLLING":
+            # Kafka Polling
+            logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
+                        f"Receiving at ~{kbps_received:.2f} kbit/s, "
+                        f"Sending at ~{kbps_sent:.2f} kbit/s, "
+                        f"Queue size: ~{queue.qsize()}")
+        
+            for host in routeviews_hosts + ris_hosts:
+                time_lag = status['time_lag']
+                latest_route = struct.unpack('>d', db.get(f'timestamps_{host}'.encode('utf-8')) or b'\x00\x00\x00\x00\x00\x00\x00\x00')[0]
+                hours, remainder = divmod(time_lag.total_seconds(), 3600)
+                minutes, seconds = divmod(remainder, 60)
+                logger.debug(f"{status['activity']}{(16 - len(status['activity'])) * ' '}| "
+                             f"{host}{(22 - len(host)) * ' '}| "
+                             f"At: ~{status['time_preceived'].get(host, '(not measured yet)').strftime('%Y-%m-%d %H:%M:%S') if host in status['time_preceived'] else '(not measured yet)'}, "
+                             f"Time lag: ~{int(hours)}h {int(minutes)}m {int(seconds)}s, "
+                             f"Sends after: {datetime.fromtimestamp(latest_route).strftime('%Y-%m-%d %H:%M:%S')}")
+                
+        elif status['activity'] == "TERMINATING":
+            # Terminating
+            logger.info(f"{status['activity']}{(17 - len(status['activity'])) * ' '}| "
+                        f"Receiving at ~{kbps_received:.2f} kbit/s, "
+                        f"Sending at ~{kbps_sent:.2f} kbit/s, "
+                        f"Queue size: ~{queue.qsize()}")
+
+        # Reset trackers
+        status['bytes_sent'] = 0
+        status['bytes_received'] = 0
+
+
 async def main():
     """
-    Main function to consume messages from MRT Dumps and Kafka, process them, and insert them into OpenBMP.
+    Main entry point for the BGPDATA collector service.
 
-    This asynchronous function sets up a Kafka consumer, subscribes to the specified topic,
-    and continuously polls for messages. It processes messages in batches, dynamically
-    adjusts polling intervals based on message lag, and handles various error scenarios.
+    This function coordinates the initialization and execution of multiple tasks that:
+    1. Sets up and configures a RocksDB database for storing Kafka offsets and state tracking.
+    2. Creates and manages a queue for buffering BGP messages to be sent to an OpenBMP collector.
+    3. Initializes Kafka consumers for RIS and Route Views data sources, with configured batch polling.
+    4. Handles MRT RIB data injection for synchronization and recovery from RIB dump files.
+    5. Establishes TCP connections for transmitting processed BGP messages to OpenBMP collectors.
+    6. Logs statistics and tracks system performance, such as message processing rates and time lag.
+    7. Monitors and gracefully handles shutdowns, ensuring proper resource cleanup.
 
-    The function performs the following key operations:
-    1. Sets up RocksDB and a Kafka consumer with specified configuration and callbacks.
-    2. Establishes a persistent TCP connection to the OpenBMP collector.
-    3. May perform initial catchup by Route Injecting MRT records from MRT Data Dumps.
-    4. Dynamically adjusts Kafka polling intervals based on message time lag.
-    5. Processes messages, including possible deserialization and translation to BMPv3 (RFC7854).
-    6. Sends processed BMP messages over TCP to the OpenBMP collector and updates the offset in RocksDB.
-    7. Handles various error scenarios and implements retry logic.
+    This function runs indefinitely and can handle interruptions or unexpected errors, resuming
+    from the last known state using RocksDB for persistence.
 
-    The function runs indefinitely until interrupted or an unhandled exception occurs.
-    This script will be able to recover gracefully through the use of RocksDB.
+    Note:
+        - The function is designed to be fault-tolerant, with retry mechanisms and event handling.
+        - It registers signal handlers to manage graceful exits on receiving termination signals.
     """
 
     # Log the start
@@ -655,67 +656,30 @@ async def main():
     QUEUE_SIZE = 10000000 # Number of messages to queue to the OpenBMP collector (1M is ~1GB Memory)
     BATCH_SIZE = 100000   # Number of messages to fetch at once from Kafka
 
-    # Get the running loop
-    loop = asyncio.get_running_loop()
-
-    # Create RocksDB database
-    db = rocksdbpy.open_default("rocks.db")
-
-    # Define queue with a limit
-    queue = queueio.Queue(maxsize=QUEUE_SIZE)
-
-    # Initialize status dictionary to share logging information
-    status = {
-        'time_lag': timedelta(0),              # Initialize time lag
-        'time_preceived': {},                  # Initialize time preceived
-        'bytes_sent': 0,                       # Initialize bytes sent counter
-        'bytes_received': 0,                   # Initialize bytes received counter
-        'activity': "INITIALIZING",            # Initialize activity
-    }
-
-    # Create a ThreadPoolExecutor for sender tasks
-    workers = (2 if len(ris_collectors) > 0 else 0) + \
-        (2 if len(routeviews_collectors) > 0 else 0) + len(openbmp_collectors)
-    executor = ThreadPoolExecutor(max_workers=workers)
-
-    # Start logging task that is updated within the loop
-    task = asyncio.create_task(logging_task(
-        status, queue, db,
-        [f"{host}.routeviews.org" for host, _ in routeviews_collectors],
-        [f"{host}.ripe.net" for host in ris_collectors]
-    ))
-
-    # Define shutdown function
-    def shutdown(signum, _=None):
-        # Set the activity
-        status['activity'] = "TERMINATING"
-
-        # Log the shutdown signal and frame information
-        logger.warning(
-            f"Shutdown signal ({signum}) received, exiting...")
-        
-        # Close the database
-        db.close()
-
-        # Shutdown the executor
-        executor.shutdown(wait=False)
-
-        # Cancel the task
-        task.cancel()
-
-        # Exit the program
-        os._exit(signum)
-
-    # Register signal handlers
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(sig, shutdown)
-
     # Log the collectors
     logger.info(f"RIS collectors: {ris_collectors}")
     logger.info(f"Route Views collectors: {routeviews_collectors}")
     logger.info(f"OpenBMP collectors: {openbmp_collectors}")
 
     try:
+        # Get the running loop
+        loop = asyncio.get_running_loop()
+
+        # Create RocksDB database
+        db = rocksdbpy.open_default("rocks.db")
+
+        # Define queue with a limit
+        queue = queueio.Queue(maxsize=QUEUE_SIZE)
+
+        # Initialize a status dictionary for logging and system performance tracking
+        status = {
+            'time_lag': timedelta(0),              # Initialize time lag
+            'time_preceived': {},                  # Initialize time preceived
+            'bytes_sent': 0,                       # Initialize bytes sent counter
+            'bytes_received': 0,                   # Initialize bytes received counter
+            'activity': "INITIALIZING",            # Initialize activity
+        }
+
         # Create readyness events
         events = {}
 
@@ -726,6 +690,33 @@ async def main():
         if len(ris_collectors) > 0:
             events["ris_injection"] = threading.Event()
             events["ris_provision"] = threading.Event()
+
+        # Define shutdown function
+        def shutdown(signum, _=None):
+            # Set the activity
+            status['activity'] = "TERMINATING"
+
+            # Log the shutdown signal and frame information
+            logger.warning(
+                f"Shutdown signal ({signum}) received, exiting...")
+            
+            # Close the database
+            db.close()
+
+            # Shutdown the executor
+            executor.shutdown(wait=False)
+
+            # Exit the program
+            os._exit(signum)
+
+        # Register signal handlers
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, shutdown)
+
+        # Create a ThreadPoolExecutor for sender tasks
+        workers = (2 if len(ris_collectors) > 0 else 0) + \
+            (2 if len(routeviews_collectors) > 0 else 0) + len(openbmp_collectors) + 1
+        executor = ThreadPoolExecutor(max_workers=workers)
 
         # Whether the RIBs injection started
         injections_started = True if db.get(
@@ -802,8 +793,12 @@ async def main():
                 executor, sender_task, queue, host, port, db, status)
             futures.append(asyncio.wrap_future(future))
 
-        # Keep the logging task and main loop alive
-        await asyncio.gather(task, *futures)
+        # Logging Task
+        future = loop.run_in_executor(executor, logging_task, status, queue, db, [f"{host}.routeviews.org" for host, _ in routeviews_collectors], [f"{host}.ripe.net" for host in ris_collectors])
+        futures.append(asyncio.wrap_future(future))
+
+        # Keep loop alive
+        await asyncio.gather(*futures)
     except Exception as e:
         logger.critical("Fatal error", exc_info=True)
     finally:
