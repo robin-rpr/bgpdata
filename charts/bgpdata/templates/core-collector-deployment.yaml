@@ -1,0 +1,71 @@
+{{- range $index, $collector := .Values.collectors.ris.configuration }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core-collector-ris-{{ $collector.name }}
+spec:
+  replicas: {{ $.Values.collectors.ris.count }}
+  selector:
+    matchLabels:
+      app: core-collector
+      group: ris
+      instance: {{ $collector.name }}
+  template:
+    metadata:
+      labels:
+        app: core-collector
+        group: ris
+        instance: {{ $collector.name }}
+    spec:
+      containers:
+      - name: core-collector
+        image: your-core-collector-image
+        env:
+        - name: POSTGRESQL_DATABASE
+          value: postgresql+asyncpg://core:core@core-db:5432/default
+        - name: OPENBMP_COLLECTORS
+          value: {{ range $i, $openbmp := until $.Values.collectors.ris.openbmpCount }}openbmp-collector-ris-{{ $i }}:5000{{ if lt (add1 $i) $.Values.collectors.ris.openbmpCount }},{{ end }}{{ end }}
+        - name: RIS_USERNAME
+          value: {{ $collector.username }}
+        - name: RIS_PASSWORD
+          value: {{ $collector.password }}
+        - name: RIS_COLLECTORS
+          value: {{ $collector.collectors }}
+---
+{{- end }}
+
+{{- range $index, $collector := .Values.collectors.routeViews.configuration }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core-collector-routeviews-{{ $collector.name }}
+spec:
+  replicas: {{ $.Values.collectors.routeViews.count }}
+  selector:
+    matchLabels:
+      app: core-collector
+      group: routeViews
+      instance: {{ $collector.name }}
+  template:
+    metadata:
+      labels:
+        app: core-collector
+        group: routeViews
+        instance: {{ $collector.name }}
+    spec:
+      containers:
+      - name: core-collector
+        image: your-core-collector-image
+        env:
+        - name: POSTGRESQL_DATABASE
+          value: postgresql+asyncpg://core:core@core-db:5432/default
+        - name: OPENBMP_COLLECTORS
+          value: {{ range $i, $openbmp := until $.Values.collectors.routeViews.openbmpCount }}openbmp-collector-routeviews-{{ $i }}:5000{{ if lt (add1 $i) $.Values.collectors.routeViews.openbmpCount }},{{ end }}{{ end }}
+        - name: ROUTEVIEWS_USERNAME
+          value: {{ $collector.username }}
+        - name: ROUTEVIEWS_PASSWORD
+          value: {{ $collector.password }}
+        - name: ROUTEVIEWS_COLLECTORS
+          value: {{ $collector.collectors }}
+---
+{{- end }}

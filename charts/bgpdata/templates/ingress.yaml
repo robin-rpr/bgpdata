@@ -7,7 +7,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
   rules:
-  - host: core-web.example.com
+  - host: bgp-data.net
     http:
       paths:
       - path: /
@@ -19,30 +19,30 @@ spec:
               number: 80
   tls:
   - hosts:
-    - core-web.example.com
+    - bgp-data.net
     secretName: core-web-tls-secret  # Reference to a TLS secret for HTTPS
 
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: openbmp-kafka-ingress
+  name: openbmp-whois-ingress
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: web, websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
   rules:
-  - host: openbmp-kafka.example.com
+  - host: whois.bgp-data.net
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: openbmp-kafka-service
+            name: openbmp-whois-service
             port:
-              number: 9092
+              number: 43
   tls:
   - hosts:
-    - openbmp-kafka.example.com
-    secretName: openbmp-kafka-tls-secret  # Reference to a TLS secret for HTTPS
+    - whois.bgp-data.net
+    secretName: openbmp-whois-tls-secret  # Reference to a TLS secret for HTTPS

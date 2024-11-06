@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: openbmp-zookeeper
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: openbmp-zookeeper
+  serviceName: openbmp-zookeeper
+  template:
+    metadata:
+      labels:
+        app: openbmp-zookeeper
+    spec:
+      containers:
+      - name: zookeeper
+        image: confluentinc/cp-zookeeper:7.1.1
+        ports:
+        - containerPort: 2181
+        env:
+        - name: ZOOKEEPER_CLIENT_PORT
+          value: "2181"
+        - name: ZOOKEEPER_TICK_TIME
+          value: "2000"
+        - name: ZOOKEEPER_INIT_LIMIT
+          value: "10"
+        - name: ZOOKEEPER_SYNC_LIMIT
+          value: "5"
+        volumeMounts:
+        - name: zookeeper-data
+          mountPath: /var/lib/zookeeper
+  volumeClaimTemplates:
+  - metadata:
+      name: zookeeper-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 20Gi

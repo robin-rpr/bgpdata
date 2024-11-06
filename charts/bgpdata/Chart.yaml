@@ -1,24 +1,35 @@
 apiVersion: v2
 name: bgpdata
-description: A Helm chart for Kubernetes
-
-# A chart can be either an 'application' or a 'library' chart.
-#
-# Application charts are a collection of templates that can be packaged into versioned archives
-# to be deployed.
-#
-# Library charts provide useful utilities or functions for the chart developer. They're included as
-# a dependency of application charts to inject those utilities and functions into the rendering
-# pipeline. Library charts do not define any templates and therefore cannot be deployed.
+description: BGP Data Collection and Analytics Service
 type: application
-
+# Keywords are used to categorize the chart.
+keywords:
+  - statistics
+  - monitoring
+  - bgp
+  - explorer
+  - ripe
+  - ris
+  - route-views
+  - openbmp
+# Sources are the URLs where users can find more information about the chart.
+sources:
+  - https://github.com/bgpdata
+home: https://bgp-data.net
+icon: https://raw.githubusercontent.com/robin-rpr/bgpdata/refs/heads/main/static/images/favicon.svg
+# Maintainers are people who maintain the chart.
+# They are not necessarily the original authors.
+maintainers:
+  - name: BGPDATA
+    email: help@bgp-data.net
+    url: https://bgp-data.net
 # This is the chart version. This version number should be incremented each time you make changes
 # to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
 version: 0.1.0
-
 # This is the version number of the application being deployed. This version number should be
 # incremented each time you make changes to the application. Versions are not expected to
 # follow Semantic Versioning. They should reflect the version the application is using.
 # It is recommended to use it with quotes.
-appVersion: "1.16.0"
+appVersion: "0.1.0"
+

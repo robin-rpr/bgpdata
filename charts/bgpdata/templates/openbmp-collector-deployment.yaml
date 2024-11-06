@@ -1,0 +1,55 @@
+{{- range $i, $openbmp := until .Values.collectors.ris.openbmpCount }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openbmp-collector-ris-{{ $i }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openbmp-collector
+      group: ris
+      instance: ris-{{ $i }}
+  template:
+    metadata:
+      labels:
+        app: openbmp-collector
+        group: ris
+        instance: ris-{{ $i }}
+    spec:
+      containers:
+      - name: openbmp-collector
+        image: openbmp/collector:2.2.3
+        env:
+        - name: KAFKA_FQDN
+          value: openbmp-kafka:29092
+---
+{{- end }}
+
+{{- range $i, $openbmp := until .Values.collectors.routeViews.openbmpCount }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openbmp-collector-routeviews-{{ $i }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openbmp-collector
+      group: routeViews
+      instance: routeviews-{{ $i }}
+  template:
+    metadata:
+      labels:
+        app: openbmp-collector
+        group: routeViews
+        instance: routeviews-{{ $i }}
+    spec:
+      containers:
+      - name: openbmp-collector
+        image: openbmp/collector:2.2.3
+        env:
+        - name: KAFKA_FQDN
+          value: openbmp-kafka:29092
+---
+{{- end }}
