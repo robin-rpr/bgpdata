@@ -163,7 +163,7 @@ def rib_task(queue, db, status, collectors, provider, events):
         queue (queue.Queue): The queue to add the messages to.
         db (rocksdbpy.DB): The RocksDB database.
         status (dict): A dictionary containing the following keys:
-            - time_lag (timedelta): The current time lag of the messages.
+            - time_lag (dict): A dictionary containing the current time lag of messages for each host.
             - time_preceived (dict): A dictionary containing the latest read timestamp for each host.
             - bytes_sent (int): The number of bytes sent since the last log.
             - bytes_received (int): The number of bytes received since the last log.
@@ -276,7 +276,7 @@ def kafka_task(configuration, collectors, topics, queue, db, status, batch_size,
         queue (queue.Queue): The queue to add the messages to.
         db (rocksdbpy.DB): The RocksDB database.
         status (dict): A dictionary containing the following keys:
-            - time_lag (timedelta): The current time lag of the messages.
+            - time_lag (dict): A dictionary containing the current time lag of messages for each host.
             - time_preceived (dict): A dictionary containing the latest read timestamp for each host.
             - bytes_sent (int): The number of bytes sent since the last log.
             - bytes_received (int): The number of bytes received since the last log.
@@ -430,7 +430,7 @@ def kafka_task(configuration, collectors, topics, queue, db, status, batch_size,
                     timestamp = datetime.now()
 
                     # HACK: Dummy approximated time lag preceived by the consumer
-                    status['time_lag'] = datetime.now() - datetime.fromtimestamp(timestamp)
+                    status['time_lag']["example.host"] = datetime.now() - datetime.fromtimestamp(timestamp)
 
                     # HACK: Untempered message for now
                     messages.append(value)
@@ -451,7 +451,7 @@ def kafka_task(configuration, collectors, topics, queue, db, status, batch_size,
                         continue
                     
                     # Update the approximated time lag preceived by the consumer
-                    status['time_lag'] = datetime.now() - datetime.fromtimestamp(timestamp)
+                    status['time_lag'][host] = datetime.now() - datetime.fromtimestamp(timestamp)
                     status['time_preceived'][host] = datetime.fromtimestamp(timestamp)
 
                     # Skip messages before the ingested collector's RIB or before the collector was seen
@@ -564,7 +564,7 @@ def logging_task(status, queue, db, routeviews_hosts, ris_hosts):
 
     Args:
         status (dict): A dictionary containing the following keys:
-            - time_lag (timedelta): The current time lag of the messages.
+            - time_lag (dict): A dictionary containing the current time lag of messages for each host.
             - time_preceived (dict): A dictionary containing the latest read timestamp for each host.
             - bytes_sent (int): The number of bytes sent since the last log.
             - bytes_received (int): The number of bytes received since the last log.
@@ -604,7 +604,7 @@ def logging_task(status, queue, db, routeviews_hosts, ris_hosts):
                         f"Queue size: ~{queue.qsize()}")
         
             for host in routeviews_hosts + ris_hosts:
-                time_lag = status['time_lag']
+                time_lag = status['time_lag'].get(host, timedelta(0))
                 latest_route = struct.unpack('>d', db.get(f'timestamps_{host}'.encode('utf-8')) or b'\x00\x00\x00\x00\x00\x00\x00\x00')[0]
                 hours, remainder = divmod(time_lag.total_seconds(), 3600)
                 minutes, seconds = divmod(remainder, 60)
@@ -673,11 +673,11 @@ async def main():
 
         # Initialize a status dictionary for logging and system performance tracking
         status = {
-            'time_lag': timedelta(0),              # Initialize time lag
-            'time_preceived': {},                  # Initialize time preceived
-            'bytes_sent': 0,                       # Initialize bytes sent counter
-            'bytes_received': 0,                   # Initialize bytes received counter
-            'activity': "INITIALIZING",            # Initialize activity
+            'time_lag': {},                  # Initialize time lag
+            'time_preceived': {},            # Initialize time preceived
+            'bytes_sent': 0,                 # Initialize bytes sent counter
+            'bytes_received': 0,             # Initialize bytes received counter
+            'activity': "INITIALIZING",      # Initialize activity
         }
 
         # Create readyness events

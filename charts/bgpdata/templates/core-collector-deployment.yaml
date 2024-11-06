@@ -1,4 +1,4 @@
-{{- range $index, $collector := .Values.collectors.ris.configuration }}
+{{- range $index, $collector := .Values."core-services".collectors.ris }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,14 +17,28 @@ spec:
         group: ris
         instance: {{ $collector.name }}
     spec:
+      restartPolicy: Always
       containers:
       - name: core-collector
-        image: your-core-collector-image
+        image: bgpdata/bgpdata:{{ .Chart.AppVersion }}
+        command: ["python"]
+        args: ["app.py", "--service", "collector"]
         env:
-        - name: POSTGRESQL_DATABASE
-          value: postgresql+asyncpg://core:core@core-db:5432/default
+        - name: POSTGRESQL_HOST
+          value: core-db
+        - name: POSTGRESQL_PORT
+          value: "5432"
+        - name: POSTGRESQL_USER
+          value: core
+        - name: POSTGRESQL_DB
+          value: default
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: core-db-secret
+              key: password
         - name: OPENBMP_COLLECTORS
-          value: {{ range $i, $openbmp := until $.Values.collectors.ris.openbmpCount }}openbmp-collector-ris-{{ $i }}:5000{{ if lt (add1 $i) $.Values.collectors.ris.openbmpCount }},{{ end }}{{ end }}
+          value: {{ range $i, $openbmp := until $.Values."openbmp-services".ris."instance-count" }}openbmp-collector-ris-{{ $i }}:5000{{ if lt (add1 $i) $.Values."openbmp-services".ris."instance-count" }},{{ end }}{{ end }}
         - name: RIS_USERNAME
           value: {{ $collector.username }}
         - name: RIS_PASSWORD
@@ -34,33 +48,46 @@ spec:
 ---
 {{- end }}
 
-{{- range $index, $collector := .Values.collectors.routeViews.configuration }}
+{{- range $index, $collector := .Values."core-services".collectors."route-views" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: core-collector-routeviews-{{ $collector.name }}
 spec:
-  replicas: {{ $.Values.collectors.routeViews.count }}
+  replicas: {{ $.Values."core-services".collectors."route-views"."instance-count" }}
   selector:
     matchLabels:
       app: core-collector
-      group: routeViews
+      group: route-views
       instance: {{ $collector.name }}
   template:
     metadata:
       labels:
         app: core-collector
-        group: routeViews
+        group: route-views
         instance: {{ $collector.name }}
     spec:
       containers:
       - name: core-collector
-        image: your-core-collector-image
+        image: bgpdata/bgpdata:{{ .Chart.AppVersion }}
+        command: ["python"]
+        args: ["app.py", "--service", "collector"]
         env:
-        - name: POSTGRESQL_DATABASE
-          value: postgresql+asyncpg://core:core@core-db:5432/default
+        - name: POSTGRESQL_HOST
+          value: core-db
+        - name: POSTGRESQL_PORT
+          value: "5432"
+        - name: POSTGRESQL_USER
+          value: core
+        - name: POSTGRESQL_DB
+          value: default
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: core-db-secret
+              key: password
         - name: OPENBMP_COLLECTORS
-          value: {{ range $i, $openbmp := until $.Values.collectors.routeViews.openbmpCount }}openbmp-collector-routeviews-{{ $i }}:5000{{ if lt (add1 $i) $.Values.collectors.routeViews.openbmpCount }},{{ end }}{{ end }}
+          value: {{ range $i, $openbmp := until $.Values."openbmp-services"."route-views"."instance-count" }}openbmp-collector-routeviews-{{ $i }}:5000{{ if lt (add1 $i) $.Values."openbmp-services"."route-views"."instance-count" }},{{ end }}{{ end }}
         - name: ROUTEVIEWS_USERNAME
           value: {{ $collector.username }}
         - name: ROUTEVIEWS_PASSWORD

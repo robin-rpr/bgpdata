@@ -1,4 +1,13 @@
 core-services:
+  web:
+    replicas: 3
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "1"
+        memory: "2Gi"
   collectors:
     ris:
       - name: rrc00.ripe.net
@@ -114,6 +123,7 @@ core-services:
         collectors: "wide:2497,wide:2500,wide:2516,wide:7500"
   database:
     replicas: 3
+    password: your-super-secret-password
     resources:
       requests:
         cpu: "500m"
@@ -125,6 +135,15 @@ core-services:
       size: 10Gi
 
 openbmp-services:
+  app:
+    replicas: 1
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "1"
+        memory: "2Gi"
   collectors:
     ris:
       instance-count: 12
@@ -132,6 +151,7 @@ openbmp-services:
       instance-count: 11
   database:
     replicas: 3
+    password: your-super-secret-password
     resources:
       requests:
         cpu: "500m"
@@ -139,8 +159,8 @@ openbmp-services:
       limits:
         cpu: "1"
         memory: "4Gi"
-    storage:
-      size: 250Gi
+      storage:
+        size: 250Gi
   kafka:
     zookeeper:
       replicas: 3
@@ -164,3 +184,12 @@ openbmp-services:
           memory: "8Gi"
         storage:
           size: 100Gi
+  whois:
+    replicas: 3
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "1"
+        memory: "2Gi"

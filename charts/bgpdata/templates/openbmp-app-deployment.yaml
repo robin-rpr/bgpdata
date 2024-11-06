@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openbmp-app
+spec:
+  replicas: {{ .Values."openbmp-services".app.replicas }}
+  selector:
+    matchLabels:
+      app: openbmp-app
+  template:
+    metadata:
+      labels:
+        app: openbmp-app
+    spec:
+      restartPolicy: Always
+      securityContext:
+        sysctls:
+        - name: net.ipv4.tcp_keepalive_intvl
+          value: "30"
+        - name: net.ipv4.tcp_keepalive_probes
+          value: "5"
+        - name: net.ipv4.tcp_keepalive_time
+          value: "180"
+      containers:
+      - name: openbmp-app
+        image: openbmp/psql-app:2.2.2
+        resources:
+          requests:
+            cpu: {{ .Values."openbmp-services".app.resources.requests.cpu }}
+            memory: {{ .Values."openbmp-services".app.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values."openbmp-services".app.resources.limits.cpu }}
+            memory: {{ .Values."openbmp-services".app.resources.limits.memory }}
+        ports:
+        - containerPort: 9005
+        env:
+        - name: MEM
+          value: 3                                     # Set memory to at least 2GB but ideally 4GB
+        - name: KAFKA_FQDN
+          value: openbmp-kafka:29092
+        - name: RPKI_URL
+          value: https://rpki.cloudflare.com/rpki.json # define the URL to retrieve json endoed RPKI data
+        - name: RPKI_PASS
+          value: None
+        - name: RPKI_USER
+          value: None
+        - name: ENABLE_RPKI
+          value: 1                                     # 1 enables, 0 disables RPKI sync
+        - name: ENABLE_IRR
+          value: 1                                     # 1 enables, 0 disables IRR sync
+        - name: ENABLE_DBIP
+          value: 1                                     # 1 enables, 0 disables DBIP import
+        - name: POSTGRES_REPORT_WINDOW
+          value: '8 minute'                            # default POSTGRESS window to select when building
+                                                       #   summary tables. For deployments that absorb large
+                                                       #   bursts increase the value, ex 60 minute
+        - name: POSTGRES_HOST
+          value: openbmp-db
+        - name: POSTGRES_PORT
+          value: 5432
+        - name: POSTGRES_USER
+          value: openbmp
+        - name: POSTGRES_DB
+          value: openbmp
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: openbmp-db-secret
+              key: password
+        - name: POSTGRES_DROP_peer_event_log
+          value: '1 month'
+        - name: POSTGRES_DROP_stat_reports
+          value: '1 day'
+        - name: POSTGRES_DROP_ip_rib_log
+          value: '1 day'
+        - name: POSTGRES_DROP_alerts
+          value: '1 day'
+        - name: POSTGRES_DROP_ls_nodes_log
+          value: '2 days'
+        - name: POSTGRES_DROP_ls_links_log
+          value: '2 days'
+        - name: POSTGRES_DROP_ls_prefixes_log
+          value: '2 days'
+        - name: POSTGRES_DROP_stats_chg_byprefix
+          value: '1 day'
+        - name: POSTGRES_DROP_stats_chg_byasn
+          value: '1 day'
+        - name: POSTGRES_DROP_stats_chg_bypeer
+          value: '1 day'
+        - name: POSTGRES_DROP_stats_ip_origins
+          value: '1 day'
+        - name: POSTGRES_DROP_stats_peer_rib
+          value: '1 day'
+        - name: POSTGRES_DROP_stats_peer_update_counts
+          value: '1 day'
+      serviceAccountName: default

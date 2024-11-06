@@ -63,7 +63,11 @@ services:
             retries: 3
             start_period: 40s
         environment:
-            POSTGRESQL_DATABASE: postgresql+asyncpg://core:core@core-db:5432/default
+            POSTGRESQL_HOST: core-db
+            POSTGRESQL_PORT: 5432
+            POSTGRESQL_DB: default
+            POSTGRESQL_USER: core
+            POSTGRESQL_PASSWORD: core
             POSTMARK_API_KEY: your-postmark-api-key
             SECRET_KEY: your-flask-secret-key
             ENVIRONMENT: development
@@ -83,7 +87,11 @@ services:
         container_name: core-collector
         restart: unless-stopped
         environment:
-            POSTGRESQL_DATABASE: postgresql+asyncpg://core:core@core-db:5432/default
+            POSTGRESQL_HOST: core-db
+            POSTGRESQL_PORT: 5432
+            POSTGRESQL_DB: default
+            POSTGRESQL_USER: core
+            POSTGRESQL_PASSWORD: core
             # List of OpenBMP collectors
             # https://github.com/OpenBMP/obmp-collector
             OPENBMP_COLLECTORS: openbmp-collector:5000
@@ -118,7 +126,11 @@ services:
     #    build: .
     #    container_name: core-aggregator
     #    environment:
-    #        POSTGRESQL_DATABASE: postgresql+asyncpg://core:core@core-db:5432/default
+    #        POSTGRESQL_HOST: core-db
+    #        POSTGRESQL_PORT: 5432
+    #        POSTGRESQL_DB: default
+    #        POSTGRESQL_USER: core
+    #        POSTGRESQL_PASSWORD: core
     #    depends_on:
     #        core-db:
     #            condition: service_healthy

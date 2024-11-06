@@ -1,4 +1,4 @@
-{{- range $i, $openbmp := until .Values.collectors.ris.openbmpCount }}
+{{- range $i, $openbmp := until .Values."openbmp-services".ris."instance-count" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,16 +17,37 @@ spec:
         group: ris
         instance: ris-{{ $i }}
     spec:
+      restartPolicy: Always
+      securityContext:
+        sysctls:
+        - name: net.ipv4.tcp_keepalive_intvl
+          value: "30"
+        - name: net.ipv4.tcp_keepalive_probes
+          value: "5"
+        - name: net.ipv4.tcp_keepalive_time
+          value: "180"
       containers:
       - name: openbmp-collector
         image: openbmp/collector:2.2.3
+        livenessProbe:
+          tcpSocket:
+            port: 5000
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          tcpSocket:
+            port: 5000
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
         env:
         - name: KAFKA_FQDN
           value: openbmp-kafka:29092
 ---
 {{- end }}
 
-{{- range $i, $openbmp := until .Values.collectors.routeViews.openbmpCount }}
+{{- range $i, $openbmp := until .Values."openbmp-services"."route-views"."instance-count" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -36,15 +57,23 @@ spec:
   selector:
     matchLabels:
       app: openbmp-collector
-      group: routeViews
+      group: route-views
       instance: routeviews-{{ $i }}
   template:
     metadata:
       labels:
         app: openbmp-collector
-        group: routeViews
+        group: route-views
         instance: routeviews-{{ $i }}
     spec:
+      securityContext:
+        sysctls:
+        - name: net.ipv4.tcp_keepalive_intvl
+          value: "30"
+        - name: net.ipv4.tcp_keepalive_probes
+          value: "5"
+        - name: net.ipv4.tcp_keepalive_time
+          value: "180"
       containers:
       - name: openbmp-collector
         image: openbmp/collector:2.2.3

@@ -3,7 +3,7 @@ kind: StatefulSet
 metadata:
   name: openbmp-zookeeper
 spec:
-  replicas: 3
+  replicas: {{ .Values."openbmp-services".kafka.zookeeper.replicas }}
   selector:
     matchLabels:
       app: openbmp-zookeeper
@@ -13,6 +13,7 @@ spec:
       labels:
         app: openbmp-zookeeper
     spec:
+      restartPolicy: Always
       containers:
       - name: zookeeper
         image: confluentinc/cp-zookeeper:7.1.1
@@ -27,6 +28,13 @@ spec:
           value: "10"
         - name: ZOOKEEPER_SYNC_LIMIT
           value: "5"
+        resources:
+          requests:
+            cpu: {{ .Values."openbmp-services".kafka.zookeeper.resources.requests.cpu }}
+            memory: {{ .Values."openbmp-services".kafka.zookeeper.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values."openbmp-services".kafka.zookeeper.resources.limits.cpu }}
+            memory: {{ .Values."openbmp-services".kafka.zookeeper.resources.limits.memory }}
         volumeMounts:
         - name: zookeeper-data
           mountPath: /var/lib/zookeeper
@@ -37,4 +45,4 @@ spec:
       accessModes: ["ReadWriteOnce"]
       resources:
         requests:
-          storage: 20Gi
+          storage: {{ .Values."openbmp-services".kafka.zookeeper.resources.storage.size }}

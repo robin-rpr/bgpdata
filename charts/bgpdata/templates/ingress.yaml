@@ -3,6 +3,7 @@ kind: Ingress
 metadata:
   name: core-web-ingress
   annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
     traefik.ingress.kubernetes.io/router.entrypoints: web, websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
@@ -20,7 +21,7 @@ spec:
   tls:
   - hosts:
     - bgp-data.net
-    secretName: core-web-tls-secret  # Reference to a TLS secret for HTTPS
+    secretName: core-web-tls-secret
 
 ---
 apiVersion: networking.k8s.io/v1
@@ -28,6 +29,7 @@ kind: Ingress
 metadata:
   name: openbmp-whois-ingress
   annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
     traefik.ingress.kubernetes.io/router.entrypoints: web, websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
@@ -45,4 +47,4 @@ spec:
   tls:
   - hosts:
     - whois.bgp-data.net
-    secretName: openbmp-whois-tls-secret  # Reference to a TLS secret for HTTPS
+    secretName: openbmp-whois-tls-secret

@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openbmp-whois
+spec:
+  replicas: {{ .Values."openbmp-services".whois.replicas }}
+  selector:
+    matchLabels:
+      app: openbmp-whois
+  template:
+    metadata:
+      labels:
+        app: openbmp-whois
+    spec:
+      restartPolicy: Always
+      securityContext:
+        sysctls:
+        - name: net.ipv4.tcp_keepalive_intvl
+          value: "30"
+        - name: net.ipv4.tcp_keepalive_probes
+          value: "5"
+        - name: net.ipv4.tcp_keepalive_time
+          value: "180"
+      containers:
+      - name: openbmp-whois
+        image: openbmp/whois:2.2.0
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 43
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 43
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: {{ .Values."openbmp-services".whois.resources.requests.cpu }}
+            memory: {{ .Values."openbmp-services".whois.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values."openbmp-services".whois.resources.limits.cpu }}
+            memory: {{ .Values."openbmp-services".whois.resources.limits.memory }}
+        ports:
+        - containerPort: 9005
+        env:
+        - name: POSTGRESQL_HOST
+          value: openbmp-db
+        - name: POSTGRESQL_PORT
+          value: "5432"
+        - name: POSTGRESQL_USER
+          value: openbmp
+        - name: POSTGRESQL_DB
+          value: default
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: openbmp-db-secret
+              key: password
+      serviceAccountName: default

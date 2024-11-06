@@ -20,7 +20,6 @@ from sqlalchemy.orm import sessionmaker
 import os
 
 PostgreSQL = sessionmaker(
-    create_async_engine(
-        os.getenv('POSTGRESQL_DATABASE'), echo=False
-    ), expire_on_commit=False, class_=AsyncSession
+    create_async_engine(f"postgresql+asyncpg://{os.getenv('POSTGRESQL_USER')}:{os.getenv('POSTGRESQL_PASSWORD')}@{os.getenv('POSTGRESQL_HOST')}:{os.getenv('POSTGRESQL_PORT')}/{os.getenv('POSTGRESQL_DB')}", echo=False),
+    expire_on_commit=False, class_=AsyncSession
 )
