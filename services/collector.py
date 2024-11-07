@@ -530,7 +530,6 @@ def sender_task(queue, host, port, db, status):
 
                     # Apply the delay before the next send if needed
                     if send_delay > 0:
-                        logger.debug(f"Applying send delay of {send_delay:.2f}s due to backpressure")
                         time.sleep(send_delay)
 
                     if not sent_message:
