@@ -1,9 +1,9 @@
 {{- define "openbmp_collectors_ris" -}}
 {{- $values := .Values }}
 {{- $collectors := "" -}}
-{{- range $i, $openbmp := until (int $values.openbmp.collectors.providers.ris.instances) -}}
+{{- range $i, $openbmp := until (int $values.openbmp.collectors.hosts.ris.instances) -}}
   {{- $collectors = printf "%sopenbmp-collector-ris-%d:5000" $collectors $i -}}
-  {{- if lt (add1 $i) (int $values.openbmp.collectors.providers.ris.instances) -}}
+  {{- if lt (add1 $i) (int $values.openbmp.collectors.hosts.ris.instances) -}}
     {{- $collectors = printf "%s," $collectors -}}
   {{- end -}}
 {{- end -}}
@@ -13,9 +13,9 @@
 {{- define "openbmp_collectors_routeviews" -}}
 {{- $values := .Values }}
 {{- $collectors := "" -}}
-{{- range $i, $openbmp := until (int $values.openbmp.collectors.providers.routeviews.instances) -}}
+{{- range $i, $openbmp := until (int $values.openbmp.collectors.hosts.routeviews.instances) -}}
   {{- $collectors = printf "%sopenbmp-collector-routeviews-%d:5000" $collectors $i -}}
-  {{- if lt (add1 $i) (int $values.openbmp.collectors.providers.routeviews.instances) -}}
+  {{- if lt (add1 $i) (int $values.openbmp.collectors.hosts.routeviews.instances) -}}
     {{- $collectors = printf "%s," $collectors -}}
   {{- end -}}
 {{- end -}}
@@ -24,7 +24,7 @@
 
 {{- $values := .Values }}
 
-{{- range $index, $collector := $values.core.collectors.providers.ris }}
+{{- range $index, $collector := $values.core.collectors.hosts.ris }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -73,15 +73,21 @@ spec:
         - name: OPENBMP_COLLECTORS
           value: {{ include "openbmp_collectors_ris" . }}
         - name: RIS_USERNAME
-          value: {{ $collector.username }}
+          valueFrom:
+            secretKeyRef:
+              name: core-collector-secret-ris
+              key: username
         - name: RIS_PASSWORD
-          value: {{ $collector.password }}
+          valueFrom:
+            secretKeyRef:
+              name: core-collector-secret-ris
+              key: password
         - name: RIS_COLLECTORS
           value: {{ $collector.collectors }}
 ---
 {{- end }}
 
-{{- range $index, $collector := $values.core.collectors.providers.routeviews }}
+{{- range $index, $collector := $values.core.collectors.hosts.routeviews }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -129,9 +135,15 @@ spec:
         - name: OPENBMP_COLLECTORS
           value: {{ include "openbmp_collectors_routeviews" . }}
         - name: ROUTEVIEWS_USERNAME
-          value: {{ $collector.username }}
+          valueFrom:
+            secretKeyRef:
+              name: core-collector-secret-routeviews
+              key: username
         - name: ROUTEVIEWS_PASSWORD
-          value: {{ $collector.password }}
+          valueFrom:
+            secretKeyRef:
+              name: core-collector-secret-routeviews
+              key: password
         - name: ROUTEVIEWS_COLLECTORS
           value: {{ $collector.collectors }}
 ---

@@ -1,5 +1,5 @@
 {{- $values := .Values }}
-{{- range $i, $openbmp := until (int $values.openbmp.collectors.providers.ris.instances) }}
+{{- range $i, $openbmp := until (int $values.openbmp.collectors.hosts.ris.instances) }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -55,7 +55,7 @@ spec:
 ---
 {{- end }}
 
-{{- range $i, $openbmp := until (int $values.openbmp.collectors.providers.routeviews.instances) }}
+{{- range $i, $openbmp := until (int $values.openbmp.collectors.hosts.routeviews.instances) }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

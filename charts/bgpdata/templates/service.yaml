@@ -14,36 +14,6 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: core-db-patroni
-  labels:
-    app: core-db
-    cluster-name: core-cluster
-spec:
-  ports:
-  - port: 5432
-    targetPort: 5432
-    name: postgresql
-  selector:
-    app: core-db
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: openbmp-db-patroni
-  labels:
-    app: openbmp-db
-    cluster-name: openbmp-cluster
-spec:
-  ports:
-  - port: 5432
-    targetPort: 5432
-    name: postgresql
-  selector:
-    app: openbmp-db
----
-apiVersion: v1
-kind: Service
-metadata:
   name: openbmp-kafka-service
 spec:
   type: LoadBalancer

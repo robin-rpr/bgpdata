@@ -16,7 +16,14 @@ core:
       limits:
         cpu: "1"
         memory: "2Gi"
-    providers:
+    secrets:
+      ris:
+        username: "public"
+        password: "public"
+      routeviews:
+        username: "public"
+        password: "public"
+    hosts:
       ris:
         - name: rrc00.ripe.net
           collectors: "rrc00"
@@ -130,7 +137,7 @@ core:
         - name: route-views.wide.routeviews.org
           collectors: "wide:2497,wide:2500,wide:2516,wide:7500"
   database:
-    password: your-super-secret-password
+    password: "your-super-secret-password"
     resources:
       requests:
         cpu: "500m"
@@ -159,13 +166,13 @@ openbmp:
         limits:
           cpu: "1"
           memory: "2Gi"
-    providers:
+    hosts:
       ris:
         instances: "12"
       routeviews:
         instances: "20"
   database:
-    password: your-super-secret-password
+    password: "your-super-secret-password"
     resources:
       requests:
         cpu: "500m"
