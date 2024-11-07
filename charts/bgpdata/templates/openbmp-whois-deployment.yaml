@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: openbmp-whois
 spec:
-  replicas: {{ .Values."openbmp-services".whois.replicas }}
+  replicas: {{ .Values.openbmp.whois.replicas }}
   selector:
     matchLabels:
       app: openbmp-whois
@@ -40,11 +40,11 @@ spec:
           failureThreshold: 3
         resources:
           requests:
-            cpu: {{ .Values."openbmp-services".whois.resources.requests.cpu }}
-            memory: {{ .Values."openbmp-services".whois.resources.requests.memory }}
+            cpu: {{ .Values.openbmp.whois.resources.requests.cpu }}
+            memory: {{ .Values.openbmp.whois.resources.requests.memory }}
           limits:
-            cpu: {{ .Values."openbmp-services".whois.resources.limits.cpu }}
-            memory: {{ .Values."openbmp-services".whois.resources.limits.memory }}
+            cpu: {{ .Values.openbmp.whois.resources.limits.cpu }}
+            memory: {{ .Values.openbmp.whois.resources.limits.memory }}
         ports:
         - containerPort: 9005
         env:

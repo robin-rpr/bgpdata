@@ -1,4 +1,4 @@
-core-services:
+core:
   web:
     replicas: 3
     resources:
@@ -64,7 +64,7 @@ core-services:
           collectors: "rrc25"
         - name: rrc26.ripe.net
           collectors: "rrc26"
-      route-views:
+      routeviews:
         - name: amsix.ams.routeviews.org
           collectors: "amsix.ams:293,amsix.ams:1103,amsix.ams:1140,amsix.ams:3320,amsix.ams:6204,amsix.ams:6777,amsix.ams:20253,amsix.ams:28283,amsix.ams:34177,amsix.ams:37271,amsix.ams:39120,amsix.ams:49544,amsix.ams:56987,amsix.ams:213241,amsix.ams:271253,amsix.ams:328832,amsix.ams:398465"
         - name: route-views.amsix.routeviews.org
@@ -141,7 +141,7 @@ core-services:
       storage:
         size: "250Gi"
 
-openbmp-services:
+openbmp:
   app:
     replicas: 1
     resources:
@@ -161,9 +161,9 @@ openbmp-services:
           memory: "2Gi"
     providers:
       ris:
-        instance-count: 12
-      route-views:
-        instance-count: 20
+        instances: "12"
+      routeviews:
+        instances: "20"
   database:
     password: your-super-secret-password
     resources:

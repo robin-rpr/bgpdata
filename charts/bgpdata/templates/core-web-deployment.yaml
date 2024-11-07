@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: core-web
 spec:
-  replicas: {{ .Values."core-services".web.replicas }}
+  replicas: {{ .Values.core.web.replicas }}
   selector:
     matchLabels:
       app: core-web
@@ -15,7 +15,7 @@ spec:
       restartPolicy: Always
       containers:
       - name: core-web
-        image: bgpdata/bgpdata:{{ .Chart.AppVersion }}
+        image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
         command: ["/bin/sh", "-c"]
         args:
           - |
@@ -45,11 +45,11 @@ spec:
           failureThreshold: 3
         resources:
           requests:
-            cpu: {{ .Values."core-services".web.resources.requests.cpu }}
-            memory: {{ .Values."core-services".web.resources.requests.memory }}
+            cpu: {{ .Values.core.web.resources.requests.cpu }}
+            memory: {{ .Values.core.web.resources.requests.memory }}
           limits:
-            cpu: {{ .Values."core-services".web.resources.limits.cpu }}
-            memory: {{ .Values."core-services".web.resources.limits.memory }}
+            cpu: {{ .Values.core.web.resources.limits.cpu }}
+            memory: {{ .Values.core.web.resources.limits.memory }}
         ports:
         - containerPort: 8080
         env:

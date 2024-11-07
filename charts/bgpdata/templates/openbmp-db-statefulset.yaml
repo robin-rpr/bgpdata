@@ -45,11 +45,11 @@ spec:
           failureThreshold: 5
         resources:
           requests:
-            cpu: {{ .Values."openbmp-services".database.resources.requests.cpu }}
-            memory: {{ .Values."openbmp-services".database.resources.requests.memory }}
+            cpu: {{ .Values.openbmp.database.resources.requests.cpu }}
+            memory: {{ .Values.openbmp.database.resources.requests.memory }}
           limits:
-            cpu: {{ .Values."openbmp-services".database.resources.limits.cpu }}
-            memory: {{ .Values."openbmp-services".database.resources.limits.memory }}
+            cpu: {{ .Values.openbmp.database.resources.limits.cpu }}
+            memory: {{ .Values.openbmp.database.resources.limits.memory }}
         ports:
         - containerPort: 5432
         env:
@@ -69,4 +69,4 @@ spec:
         - name: openbmp-db-data
           emptyDir:
             medium: "Memory" # We don't need persistent storage for the database
-            sizeLimit: {{ .Values."openbmp-services".database.resources.storage.size }}
+            sizeLimit: {{ .Values.openbmp.database.resources.storage.size }}

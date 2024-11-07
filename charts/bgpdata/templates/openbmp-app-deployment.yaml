@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: openbmp-app
 spec:
-  replicas: {{ .Values."openbmp-services".app.replicas }}
+  replicas: {{ .Values.openbmp.app.replicas }}
   selector:
     matchLabels:
       app: openbmp-app
@@ -26,11 +26,11 @@ spec:
         image: openbmp/psql-app:2.2.2
         resources:
           requests:
-            cpu: {{ .Values."openbmp-services".app.resources.requests.cpu }}
-            memory: {{ .Values."openbmp-services".app.resources.requests.memory }}
+            cpu: {{ .Values.openbmp.app.resources.requests.cpu }}
+            memory: {{ .Values.openbmp.app.resources.requests.memory }}
           limits:
-            cpu: {{ .Values."openbmp-services".app.resources.limits.cpu }}
-            memory: {{ .Values."openbmp-services".app.resources.limits.memory }}
+            cpu: {{ .Values.openbmp.app.resources.limits.cpu }}
+            memory: {{ .Values.openbmp.app.resources.limits.memory }}
         ports:
         - containerPort: 9005
         env:

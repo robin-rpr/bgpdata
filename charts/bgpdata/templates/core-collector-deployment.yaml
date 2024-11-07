@@ -1,4 +1,30 @@
-{{- range $index, $collector := .Values."core-services".collectors.providers.ris }}
+{{- define "openbmp_collectors_ris" -}}
+{{- $values := .Values }}
+{{- $collectors := "" -}}
+{{- range $i, $openbmp := until (int $values.openbmp.collectors.providers.ris.instances) -}}
+  {{- $collectors = printf "%sopenbmp-collector-ris-%d:5000" $collectors $i -}}
+  {{- if lt (add1 $i) (int $values.openbmp.collectors.providers.ris.instances) -}}
+    {{- $collectors = printf "%s," $collectors -}}
+  {{- end -}}
+{{- end -}}
+{{- $collectors -}}
+{{- end }}
+
+{{- define "openbmp_collectors_routeviews" -}}
+{{- $values := .Values }}
+{{- $collectors := "" -}}
+{{- range $i, $openbmp := until (int $values.openbmp.collectors.providers.routeviews.instances) -}}
+  {{- $collectors = printf "%sopenbmp-collector-routeviews-%d:5000" $collectors $i -}}
+  {{- if lt (add1 $i) (int $values.openbmp.collectors.providers.routeviews.instances) -}}
+    {{- $collectors = printf "%s," $collectors -}}
+  {{- end -}}
+{{- end -}}
+{{- $collectors -}}
+{{- end }}
+
+{{- $values := .Values }}
+
+{{- range $index, $collector := $values.core.collectors.providers.ris }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,16 +46,16 @@ spec:
       restartPolicy: Always
       containers:
       - name: core-collector
-        image: bgpdata/bgpdata:{{ .Chart.AppVersion }}
+        image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
         command: ["python"]
         args: ["app.py", "--service", "collector"]
         resources:
           requests:
-            cpu: {{ .Values."core-services".collectors.resources.requests.cpu }}
-            memory: {{ .Values."core-services".collectors.resources.requests.memory }}
+            cpu: {{ $values.core.collectors.resources.requests.cpu }}
+            memory: {{ $values.core.collectors.resources.requests.memory }}
           limits:
-            cpu: {{ .Values."core-services".collectors.resources.limits.cpu }}
-            memory: {{ .Values."core-services".collectors.resources.limits.memory }}
+            cpu: {{ $values.core.collectors.resources.limits.cpu }}
+            memory: {{ $values.core.collectors.resources.limits.memory }}
         env:
         - name: POSTGRESQL_HOST
           value: core-db
@@ -45,7 +71,7 @@ spec:
               name: core-db-secret
               key: password
         - name: OPENBMP_COLLECTORS
-          value: {{ range $i, $openbmp := until $.Values."openbmp-services".ris."instance-count" }}openbmp-collector-ris-{{ $i }}:5000{{ if lt (add1 $i) $.Values."openbmp-services".ris."instance-count" }},{{ end }}{{ end }}
+          value: {{ include "openbmp_collectors_ris" . }}
         - name: RIS_USERNAME
           value: {{ $collector.username }}
         - name: RIS_PASSWORD
@@ -55,7 +81,7 @@ spec:
 ---
 {{- end }}
 
-{{- range $index, $collector := .Values."core-services".collectors.providers."route-views" }}
+{{- range $index, $collector := $values.core.collectors.providers.routeviews }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -76,16 +102,16 @@ spec:
     spec:
       containers:
       - name: core-collector
-        image: bgpdata/bgpdata:{{ .Chart.AppVersion }}
+        image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
         command: ["python"]
         args: ["app.py", "--service", "collector"]
         resources:
           requests:
-            cpu: {{ .Values."core-services".collectors.resources.requests.cpu }}
-            memory: {{ .Values."core-services".collectors.resources.requests.memory }}
+            cpu: {{ $values.core.collectors.resources.requests.cpu }}
+            memory: {{ $values.core.collectors.resources.requests.memory }}
           limits:
-            cpu: {{ .Values."core-services".collectors.resources.limits.cpu }}
-            memory: {{ .Values."core-services".collectors.resources.limits.memory }}
+            cpu: {{ $values.core.collectors.resources.limits.cpu }}
+            memory: {{ $values.core.collectors.resources.limits.memory }}
         env:
         - name: POSTGRESQL_HOST
           value: core-db
@@ -101,7 +127,7 @@ spec:
               name: core-db-secret
               key: password
         - name: OPENBMP_COLLECTORS
-          value: {{ range $i, $openbmp := until $.Values."openbmp-services"."route-views"."instance-count" }}openbmp-collector-routeviews-{{ $i }}:5000{{ if lt (add1 $i) $.Values."openbmp-services"."route-views"."instance-count" }},{{ end }}{{ end }}
+          value: {{ include "openbmp_collectors_routeviews" . }}
         - name: ROUTEVIEWS_USERNAME
           value: {{ $collector.username }}
         - name: ROUTEVIEWS_PASSWORD
