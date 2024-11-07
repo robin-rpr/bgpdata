@@ -58,9 +58,9 @@ spec:
         - name: POSTGRESQL_PORT
           value: "5432"
         - name: POSTGRESQL_USER
-          value: core
+          value: "core"
         - name: POSTGRESQL_DB
-          value: default
+          value: "default"
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:

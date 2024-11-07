@@ -51,7 +51,7 @@ spec:
           failureThreshold: 3
         env:
         - name: KAFKA_FQDN
-          value: openbmp-kafka:29092
+          value: "openbmp-kafka:29092"
 ---
 {{- end }}
 
@@ -106,6 +106,6 @@ spec:
           failureThreshold: 3
         env:
         - name: KAFKA_FQDN
-          value: openbmp-kafka:29092
+          value: "openbmp-kafka:29092"
 ---
 {{- end }}

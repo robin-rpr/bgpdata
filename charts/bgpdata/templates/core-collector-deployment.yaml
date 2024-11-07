@@ -58,13 +58,13 @@ spec:
             memory: {{ $values.core.collectors.resources.limits.memory }}
         env:
         - name: POSTGRESQL_HOST
-          value: core-db
+          value: "core-db"
         - name: POSTGRESQL_PORT
           value: "5432"
         - name: POSTGRESQL_USER
-          value: core
+          value: "core"
         - name: POSTGRESQL_DB
-          value: default
+          value: "default"
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
@@ -114,13 +114,13 @@ spec:
             memory: {{ $values.core.collectors.resources.limits.memory }}
         env:
         - name: POSTGRESQL_HOST
-          value: core-db
+          value: "core-db"
         - name: POSTGRESQL_PORT
           value: "5432"
         - name: POSTGRESQL_USER
-          value: core
+          value: "core"
         - name: POSTGRESQL_DB
-          value: default
+          value: "default"
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:

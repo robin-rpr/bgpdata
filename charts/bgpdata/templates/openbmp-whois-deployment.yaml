@@ -49,13 +49,13 @@ spec:
         - containerPort: 9005
         env:
         - name: POSTGRESQL_HOST
-          value: openbmp-db
+          value: "openbmp-db"
         - name: POSTGRESQL_PORT
           value: "5432"
         - name: POSTGRESQL_USER
-          value: openbmp
+          value: "openbmp"
         - name: POSTGRESQL_DB
-          value: default
+          value: "default"
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
