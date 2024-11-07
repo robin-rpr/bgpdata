@@ -3,7 +3,7 @@ kind: StatefulSet
 metadata:
   name: openbmp-db
 spec:
-  replicas: {{ .Values."openbmp-services".database.replicas }}
+  replicas: 1
   selector:
     matchLabels:
       app: openbmp-db
@@ -62,38 +62,9 @@ spec:
               key: password
         - name: POSTGRES_DB
           value: "openbmp"
-        - name: PATRONI_SCOPE
-          value: openbmp-cluster
-        - name: PATRONI_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: PATRONI_KUBERNETES_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        - name: PATRONI_KUBERNETES_POD_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.podIP
-        - name: PATRONI_KUBERNETES_PORTS
-          value: '[{"name": "postgresql", "port": 5432}]'
         volumeMounts:
         - name: openbmp-db-data
           mountPath: /var/lib/postgresql/data
-      initContainers:
-      - name: install-patroni
-        image: python:3.9-slim
-        command:
-        - /bin/bash
-        - -c
-        - |
-          apt-get update && apt-get install -y python3-pip
-          pip install patroni[kubernetes]
-          cp -r /usr/local/lib/python3.9/site-packages/* /patroni-lib/
-        volumeMounts:
-        - name: patroni-lib
-          mountPath: /patroni-lib
   volumeClaimTemplates:
   - metadata:
       name: openbmp-db-data
@@ -102,6 +73,3 @@ spec:
       resources:
         requests:
           storage: {{ .Values."openbmp-services".database.resources.storage.size }}
-  volumes:
-  - name: patroni-lib
-    emptyDir: {}

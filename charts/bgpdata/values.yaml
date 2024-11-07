@@ -130,7 +130,6 @@ core-services:
         - name: route-views.wide.routeviews.org
           collectors: "wide:2497,wide:2500,wide:2516,wide:7500"
   database:
-    replicas: 3
     password: your-super-secret-password
     resources:
       requests:
@@ -166,7 +165,6 @@ openbmp-services:
       route-views:
         instance-count: 20
   database:
-    replicas: 3
     password: your-super-secret-password
     resources:
       requests:
