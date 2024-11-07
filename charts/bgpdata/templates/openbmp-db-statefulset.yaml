@@ -65,11 +65,8 @@ spec:
         volumeMounts:
         - name: openbmp-db-data
           mountPath: /var/lib/postgresql/data
-  volumeClaimTemplates:
-  - metadata:
-      name: openbmp-db-data
-    spec:
-      accessModes: ["ReadWriteOnce"]
-      resources:
-        requests:
-          storage: {{ .Values."openbmp-services".database.resources.storage.size }}
+        volumes:
+        - name: openbmp-db-data
+          emptyDir:
+            medium: "Memory" # We don't need persistent storage for the database
+            sizeLimit: {{ .Values."openbmp-services".database.resources.storage.size }}

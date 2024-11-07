@@ -138,8 +138,8 @@ core-services:
       limits:
         cpu: "1"
         memory: "4Gi"
-    storage:
-      size: 10Gi
+      storage:
+        size: "250Gi"
 
 openbmp-services:
   app:
@@ -174,7 +174,7 @@ openbmp-services:
         cpu: "1"
         memory: "4Gi"
       storage:
-        size: 250Gi
+        size: "2048Gi"
   kafka:
     zookeeper:
       replicas: 3
@@ -186,7 +186,7 @@ openbmp-services:
           cpu: "1"
           memory: "2Gi"
         storage:
-          size: 10Gi
+          size: "10Gi"
     kafka:
       replicas: 3
       resources:
@@ -197,7 +197,7 @@ openbmp-services:
           cpu: "2"
           memory: "8Gi"
         storage:
-          size: 100Gi
+          size: "100Gi"
   whois:
     replicas: 3
     resources:
