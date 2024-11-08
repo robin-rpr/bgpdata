@@ -1,17 +1,17 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: core-openbmp-collectors
+  name: openbmp-collector
 spec:
-  serviceName: "core-openbmp-collectors"
+  serviceName: "openbmp-collector"
   replicas: 1
   selector:
     matchLabels:
-      app: core-openbmp-collectors
+      app: openbmp-collector
   template:
     metadata:
       labels:
-        app: core-openbmp-collectors
+        app: openbmp-collector
     spec:
       restartPolicy: Always
       securityContext:
