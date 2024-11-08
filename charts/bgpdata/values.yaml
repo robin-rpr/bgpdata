@@ -14,7 +14,7 @@ core:
         cpu: "500m"
         memory: "1Gi"
       limits:
-        cpu: "1"
+        cpu: "2"
         memory: "2Gi"
       storage:
         size: "100Mi"
@@ -164,15 +164,10 @@ openbmp:
     resources:
         requests:
           cpu: "500m"
-          memory: "1Gi"
+          memory: "3Gi"
         limits:
           cpu: "1"
-          memory: "2Gi"
-    hosts:
-      ris:
-        instances: "12"
-      routeviews:
-        instances: "20"
+          memory: "4Gi"
   database:
     password: "your-super-secret-password"
     resources:
