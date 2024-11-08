@@ -38,4 +38,4 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/bgpdata:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/bgpdata:${{ env.VERSION }}
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
