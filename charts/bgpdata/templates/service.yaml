@@ -11,17 +11,43 @@ spec:
     port: 80
     targetPort: 8080
 ---
+{{- range $i, $openbmp := until (int .Values.openbmp.collectors.hosts.routeviews.instances) }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: openbmp-kafka-service
+  name: openbmp-collector-routeviews-{{ $i }}-service
 spec:
-  type: LoadBalancer
+  clusterIP: None
+  selector:
+    app: openbmp-collector
+    group: routeviews
+    instance: routeviews-{{ $i }}
+{{- end }}
+---
+{{- range $i, $openbmp := until (int .Values.openbmp.collectors.hosts.ris.instances) }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: openbmp-collector-ris-{{ $i }}-service
+spec:
+  clusterIP: None  # Headless service
+  selector:
+    app: openbmp-collector
+    group: ris
+    instance: ris-{{ $i }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openbmp-kafka
+spec:
+  clusterIP: None
   selector:
     app: openbmp-kafka
   ports:
-  - protocol: TCP
-    port: 9092
+  - name: broker
+    port: 29092
     targetPort: 9092
 ---
 apiVersion: v1

@@ -1,10 +1,12 @@
 {{- $values := .Values }}
 {{- range $i, $openbmp := until (int $values.openbmp.collectors.hosts.ris.instances) }}
+---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: openbmp-collector-ris-{{ $i }}
 spec:
+  serviceName: "openbmp-collector-ris-{{ $i }}"
   replicas: 1
   selector:
     matchLabels:
@@ -56,11 +58,13 @@ spec:
 {{- end }}
 
 {{- range $i, $openbmp := until (int $values.openbmp.collectors.hosts.routeviews.instances) }}
+---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: openbmp-collector-routeviews-{{ $i }}
 spec:
+  serviceName: "openbmp-collector-routeviews-{{ $i }}"
   replicas: 1
   selector:
     matchLabels:

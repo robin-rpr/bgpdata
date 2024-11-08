@@ -1,10 +1,12 @@
 {{- $values := .Values }}
 {{- range $index, $collector := $values.core.collectors.hosts.ris }}
+---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: core-collector-ris-{{ $collector.name }}
 spec:
+  serviceName: "core-collector-ris-{{ $collector.name }}"
   replicas: 1
   selector:
     matchLabels:
@@ -69,23 +71,24 @@ spec:
         volumeMounts:
         - name: core-collector-ris-{{ $collector.name }}-data
           mountPath: /app/rocks.db
-    volumeClaimTemplates:
-    - metadata:
-        name: core-collector-ris-{{ $collector.name }}-data
-        spec:
-          accessModes: ["ReadWriteOnce"]
-          resources:
-            requests:
-              storage: {{ $values.core.collectors.resources.storage.size }}
+  volumeClaimTemplates:
+  - metadata:
+      name: core-collector-ris-{{ $collector.name }}-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: {{ $values.core.collectors.resources.storage.size }}
 ---
 {{- end }}
 
 {{- range $index, $collector := $values.core.collectors.hosts.routeviews }}
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: core-collector-routeviews-{{ $collector.name }}
 spec:
+  serviceName: "core-collector-routeviews-{{ $collector.name }}"
   replicas: 1
   selector:
     matchLabels:
@@ -155,13 +158,13 @@ spec:
         volumeMounts:
         - name: core-collector-routeviews-{{ $collector.name }}-data
           mountPath: /app/rocks.db
-    volumeClaimTemplates:
-    - metadata:
-        name: core-collector-{{ $collector.name }}-data
-        spec:
-          accessModes: ["ReadWriteOnce"]
-          resources:
-            requests:
-              storage: {{ $values.core.collectors.resources.storage.size }}
+  volumeClaimTemplates:
+  - metadata:
+      name: core-collector-routeviews-{{ $collector.name }}-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: {{ $values.core.collectors.resources.storage.size }}
 ---
 {{- end }}
