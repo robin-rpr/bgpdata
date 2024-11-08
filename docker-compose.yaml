@@ -306,8 +306,7 @@ services:
 
     openbmp-zookeeper:
         container_name: openbmp-zookeeper
-        image: confluentinc/cp-zookeeper:7.1.1
-        platform: linux/amd64
+        image: confluentinc/cp-zookeeper:7.7.1
         restart: unless-stopped
         volumes:
             - obmp_zk_data:/var/lib/zookeeper
@@ -317,8 +316,7 @@ services:
 
     openbmp-kafka:
         container_name: openbmp-kafka
-        image: confluentinc/cp-kafka:7.1.1
-        platform: linux/amd64
+        image: confluentinc/cp-kafka:7.7.1
         restart: unless-stopped
         healthcheck:
             test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "openbmp-kafka:29092"]

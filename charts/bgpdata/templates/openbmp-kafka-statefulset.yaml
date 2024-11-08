@@ -16,7 +16,7 @@ spec:
       restartPolicy: Always
       containers:
       - name: kafka
-        image: confluentinc/cp-kafka:7.1.1
+        image: confluentinc/cp-kafka:7.7.1
         livenessProbe:
           exec:
             command:
