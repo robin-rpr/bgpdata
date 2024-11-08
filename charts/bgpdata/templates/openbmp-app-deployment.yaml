@@ -37,7 +37,7 @@ spec:
         - name: MEM
           value: "3"                                     # Set memory to at least 2GB but ideally 4GB
         - name: KAFKA_FQDN
-          value: "openbmp-kafka:29092"
+          value: "openbmp-kafka-service:29092"
         - name: RPKI_URL
           value: "https://rpki.cloudflare.com/rpki.json" # define the URL to retrieve json endoed RPKI data
         - name: RPKI_PASS
@@ -55,7 +55,7 @@ spec:
                                                          #   summary tables. For deployments that absorb large
                                                          #   bursts increase the value, ex 60 minute
         - name: POSTGRES_HOST
-          value: "openbmp-db"
+          value: "openbmp-db-service"
         - name: POSTGRES_PORT
           value: "5432"
         - name: POSTGRES_USER

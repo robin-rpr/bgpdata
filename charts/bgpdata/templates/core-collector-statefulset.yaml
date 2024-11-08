@@ -55,7 +55,7 @@ spec:
               name: core-db-secret
               key: password
         - name: OPENBMP_COLLECTORS
-          value: "openbmp-collector-ris-{{ $index }}:5000"
+          value: "openbmp-collector-ris-{{ $index }}-service:5000"
         - name: RIS_USERNAME
           valueFrom:
             secretKeyRef:
@@ -142,7 +142,7 @@ spec:
               name: core-db-secret
               key: password
         - name: OPENBMP_COLLECTORS
-          value: "openbmp-collector-routeviews-{{ $index }}:5000"
+          value: "openbmp-collector-routeviews-{{ $index }}-service:5000"
         - name: ROUTEVIEWS_USERNAME
           valueFrom:
             secretKeyRef:

@@ -30,7 +30,7 @@ kind: Service
 metadata:
   name: openbmp-collector-ris-{{ $i }}-service
 spec:
-  clusterIP: None  # Headless service
+  clusterIP: None
   selector:
     app: openbmp-collector
     group: ris
@@ -40,7 +40,20 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: openbmp-kafka
+  name: openbmp-db-service
+spec:
+  type: ClusterIP
+  selector:
+    app: openbmp-db
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openbmp-kafka-service
 spec:
   clusterIP: None
   selector:
@@ -49,6 +62,25 @@ spec:
   - name: broker
     port: 29092
     targetPort: 9092
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openbmp-zookeeper-service
+spec:
+  clusterIP: None
+  selector:
+    app: openbmp-zookeeper
+  ports:
+  - name: client
+    port: 2181
+    targetPort: 2181
+  - name: peer
+    port: 2888
+    targetPort: 2888
+  - name: leader-election
+    port: 3888
+    targetPort: 3888
 ---
 apiVersion: v1
 kind: Service
