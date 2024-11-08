@@ -1,170 +1,99 @@
-{{- $values := .Values }}
-{{- range $index, $collector := $values.core.collectors.hosts.ris }}
----
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: core-collector-ris-{{ $collector.name }}
+  name: core-collector
 spec:
-  serviceName: "core-collector-ris-{{ $collector.name }}"
-  replicas: 1
+  serviceName: "core-collector"
+  replicas: {{ add (len .Values.core.collectors.hosts.ris) (len .Values.core.collectors.hosts.routeviews) }}
   selector:
     matchLabels:
       app: core-collector
-      group: ris
-      instance: {{ $collector.name }}
   template:
     metadata:
       labels:
         app: core-collector
-        group: ris
-        instance: {{ $collector.name }}
     spec:
-      restartPolicy: Always
-      {{- if gt $index 0 }}
-      initContainers:
-      - name: wait-for-previous
-        image: bitnami/kubectl:latest
-        command: ["sh", "-c", "while true; do if kubectl get pod core-collector-ris-{{ (sub $index 1) }} -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q 'True'; then break; else sleep 300; fi; done"]
-        serviceAccountName: core-collector-sa
-      {{- end }}
       containers:
-      - name: core-collector
-        image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
-        command: ["python"]
-        args: ["app.py", "--service", "collector"]
-        resources:
-          requests:
-            cpu: {{ $values.core.collectors.resources.requests.cpu }}
-            memory: {{ $values.core.collectors.resources.requests.memory }}
-          limits:
-            cpu: {{ $values.core.collectors.resources.limits.cpu }}
-            memory: {{ $values.core.collectors.resources.limits.memory }}
-        env:
-        - name: POSTGRESQL_HOST
-          value: "core-db"
-        - name: POSTGRESQL_PORT
-          value: "5432"
-        - name: POSTGRESQL_USER
-          value: "core"
-        - name: POSTGRESQL_DB
-          value: "default"
-        - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: core-db-secret
-              key: password
-        - name: OPENBMP_COLLECTORS
-          value: "openbmp-collector-ris-{{ $index }}-service:5000"
-        - name: RIS_USERNAME
-          valueFrom:
-            secretKeyRef:
-              name: core-collector-secret-ris
-              key: username
-        - name: RIS_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: core-collector-secret-ris
-              key: password
-        - name: RIS_COLLECTORS
-          value: {{ $collector.collectors }}
-        volumeMounts:
-        - name: core-collector-ris-{{ $collector.name }}-data
-          mountPath: /app/rocks.db
-  volumeClaimTemplates:
-  - metadata:
-      name: core-collector-ris-{{ $collector.name }}-data
-    spec:
-      accessModes: ["ReadWriteOnce"]
-      resources:
-        requests:
-          storage: {{ $values.core.collectors.resources.storage.size }}
----
-{{- end }}
+        {{- range $index, $collector := .Values.core.collectors.hosts.ris }}
+        - name: core-collector-ris-{{ $collector.name }}
+          image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
+          command: ["python"]
+          args: ["app.py", "--service", "collector"]
+          env:
+          - name: POSTGRESQL_HOST
+            value: "core-db"
+          - name: POSTGRESQL_PORT
+            value: "5432"
+          - name: POSTGRESQL_USER
+            value: "core"
+          - name: POSTGRESQL_DB
+            value: "default"
+          - name: POSTGRES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: core-db-secret
+                key: password
+          - name: OPENBMP_COLLECTORS
+            value: "openbmp-collector-ris-{{ $index }}-service:5000"
+          - name: RIS_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: core-collector-secret-ris
+                key: username
+          - name: RIS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: core-collector-secret-ris
+                key: password
+          - name: RIS_COLLECTORS
+            value: {{ $collector.collectors }}
+          volumeMounts:
+          - name: core-collector-ris-{{ $collector.name }}-data
+            mountPath: /app/rocks.db
+        {{- end }}
 
-{{- range $index, $collector := $values.core.collectors.hosts.routeviews }}
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: core-collector-routeviews-{{ $collector.name }}
-spec:
-  serviceName: "core-collector-routeviews-{{ $collector.name }}"
-  replicas: 1
-  selector:
-    matchLabels:
-      app: core-collector
-      group: route-views
-      instance: {{ $collector.name }}
-  template:
-    metadata:
-      labels:
-        app: core-collector
-        group: route-views
-        instance: {{ $collector.name }}
-    spec:
-      restartPolicy: Always
-      {{- if gt $index 0 }}
-      initContainers:
-      - name: wait-for-previous
-        image: bitnami/kubectl:latest
-        command: ["sh", "-c", "while true; do if kubectl get pod core-collector-routeviews-{{ (sub $index 1) }} -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q 'True'; then break; else sleep 300; fi; done"]
-        serviceAccountName: core-collector-sa
-      {{- end }}
-      containers:
-      - name: core-collector
-        image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
-        command: ["python"]
-        args: ["app.py", "--service", "collector"]
-        readinessProbe:
-          exec:
-            command: ["sh", "-c", "python3 -c 'import rocksdb; db = rocksdb.DB(\"rocks.db\", rocksdb.Options(create_if_missing=False)); exit(0) if db.get(b\"ready\") == b\"\\x01\" else exit(1)'"]
-          periodSeconds: 60
-          failureThreshold: 3
+        {{- range $index, $collector := .Values.core.collectors.hosts.routeviews }}
+        - name: core-collector-routeviews-{{ $collector.name }}
+          image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
+          command: ["python"]
+          args: ["app.py", "--service", "collector"]
+          env:
+          - name: POSTGRESQL_HOST
+            value: "core-db"
+          - name: POSTGRESQL_PORT
+            value: "5432"
+          - name: POSTGRESQL_USER
+            value: "core"
+          - name: POSTGRESQL_DB
+            value: "default"
+          - name: POSTGRES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: core-db-secret
+                key: password
+          - name: OPENBMP_COLLECTORS
+            value: "openbmp-collector-routeviews-{{ $index }}-service:5000"
+          - name: ROUTEVIEWS_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: core-collector-secret-routeviews
+                key: username
+          - name: ROUTEVIEWS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: core-collector-secret-routeviews
+                key: password
+          - name: ROUTEVIEWS_COLLECTORS
+            value: {{ $collector.collectors }}
+          volumeMounts:
+          - name: core-collector-routeviews-{{ $collector.name }}-data
+            mountPath: /app/rocks.db
+        {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: core-collector-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
         resources:
           requests:
-            cpu: {{ $values.core.collectors.resources.requests.cpu }}
-            memory: {{ $values.core.collectors.resources.requests.memory }}
-          limits:
-            cpu: {{ $values.core.collectors.resources.limits.cpu }}
-            memory: {{ $values.core.collectors.resources.limits.memory }}
-        env:
-        - name: POSTGRESQL_HOST
-          value: "core-db"
-        - name: POSTGRESQL_PORT
-          value: "5432"
-        - name: POSTGRESQL_USER
-          value: "core"
-        - name: POSTGRESQL_DB
-          value: "default"
-        - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: core-db-secret
-              key: password
-        - name: OPENBMP_COLLECTORS
-          value: "openbmp-collector-routeviews-{{ $index }}-service:5000"
-        - name: ROUTEVIEWS_USERNAME
-          valueFrom:
-            secretKeyRef:
-              name: core-collector-secret-routeviews
-              key: username
-        - name: ROUTEVIEWS_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: core-collector-secret-routeviews
-              key: password
-        - name: ROUTEVIEWS_COLLECTORS
-          value: {{ $collector.collectors }}
-        volumeMounts:
-        - name: core-collector-routeviews-{{ $collector.name }}-data
-          mountPath: /app/rocks.db
-  volumeClaimTemplates:
-  - metadata:
-      name: core-collector-routeviews-{{ $collector.name }}-data
-    spec:
-      accessModes: ["ReadWriteOnce"]
-      resources:
-        requests:
-          storage: {{ $values.core.collectors.resources.storage.size }}
----
-{{- end }}
+            storage: {{ .Values.core.collectors.resources.storage.size }}

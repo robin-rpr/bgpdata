@@ -1,24 +1,17 @@
-{{- $values := .Values }}
-{{- range $i, $openbmp := until (int $values.openbmp.collectors.hosts.ris.instances) }}
----
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: openbmp-collector-ris-{{ $i }}
+  name: core-openbmp-collectors
 spec:
-  serviceName: "openbmp-collector-ris-{{ $i }}"
+  serviceName: "core-openbmp-collectors"
   replicas: 1
   selector:
     matchLabels:
-      app: openbmp-collector
-      group: ris
-      instance: ris-{{ $i }}
+      app: core-openbmp-collectors
   template:
     metadata:
       labels:
-        app: openbmp-collector
-        group: ris
-        instance: ris-{{ $i }}
+        app: core-openbmp-collectors
     spec:
       restartPolicy: Always
       securityContext:
@@ -30,86 +23,71 @@ spec:
         - name: net.ipv4.tcp_keepalive_time
           value: "180"
       containers:
-      - name: openbmp-collector
-        image: openbmp/collector:2.2.3
-        resources:
-          requests:
-            cpu: {{ $values.openbmp.collectors.resources.requests.cpu }}
-            memory: {{ $values.openbmp.collectors.resources.requests.memory }}
-          limits:
-            cpu: {{ $values.openbmp.collectors.resources.limits.cpu }}
-            memory: {{ $values.openbmp.collectors.resources.limits.memory }}
-        livenessProbe:
-          tcpSocket:
-            port: 5000
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 3
-        readinessProbe:
-          tcpSocket:
-            port: 5000
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 3
-        env:
-        - name: KAFKA_FQDN
-          value: "openbmp-kafka-service:29092"
----
-{{- end }}
+        {{- range $index, $collector := .Values.core.collectors.hosts.ris }}
+        - name: openbmp-collector-ris-{{ $collector.name }}
+          image: openbmp/collector:2.2.3
+          resources:
+            requests:
+              cpu: {{ $.Values.openbmp.collectors.resources.requests.cpu }}
+              memory: {{ $.Values.openbmp.collectors.resources.requests.memory }}
+            limits:
+              cpu: {{ $.Values.openbmp.collectors.resources.limits.cpu }}
+              memory: {{ $.Values.openbmp.collectors.resources.limits.memory }}
+          env:
+          - name: KAFKA_FQDN
+            value: "openbmp-kafka-service:29092"
+          - name: UNIQUE_COLLECTOR
+            value: {{ $collector.collectors }}
+          livenessProbe:
+            tcpSocket:
+              port: 5000
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 5000
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+        {{- end }}
 
-{{- range $i, $openbmp := until (int $values.openbmp.collectors.hosts.routeviews.instances) }}
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: openbmp-collector-routeviews-{{ $i }}
-spec:
-  serviceName: "openbmp-collector-routeviews-{{ $i }}"
-  replicas: 1
-  selector:
-    matchLabels:
-      app: openbmp-collector
-      group: route-views
-      instance: routeviews-{{ $i }}
-  template:
-    metadata:
-      labels:
-        app: openbmp-collector
-        group: route-views
-        instance: routeviews-{{ $i }}
+        {{- range $index, $collector := .Values.core.collectors.hosts.routeviews }}
+        - name: openbmp-collector-routeviews-{{ $collector.name }}
+          image: openbmp/collector:2.2.3
+          resources:
+            requests:
+              cpu: {{ $.Values.openbmp.collectors.resources.requests.cpu }}
+              memory: {{ $.Values.openbmp.collectors.resources.requests.memory }}
+            limits:
+              cpu: {{ $.Values.openbmp.collectors.resources.limits.cpu }}
+              memory: {{ $.Values.openbmp.collectors.resources.limits.memory }}
+          env:
+          - name: KAFKA_FQDN
+            value: "openbmp-kafka-service:29092"
+          - name: UNIQUE_COLLECTOR
+            value: {{ $collector.collectors }}
+          livenessProbe:
+            tcpSocket:
+              port: 5000
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 5000
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+        {{- end }}
+      volumes:
+      - name: core-openbmp-data
+        emptyDir: {}
+  volumeClaimTemplates:
+  - metadata:
+      name: core-openbmp-data
     spec:
-      securityContext:
-        sysctls:
-        - name: net.ipv4.tcp_keepalive_intvl
-          value: "30"
-        - name: net.ipv4.tcp_keepalive_probes
-          value: "5"
-        - name: net.ipv4.tcp_keepalive_time
-          value: "180"
-      containers:
-      - name: openbmp-collector
-        image: openbmp/collector:2.2.3
-        resources:
-          requests:
-            cpu: {{ $values.openbmp.collectors.resources.requests.cpu }}
-            memory: {{ $values.openbmp.collectors.resources.requests.memory }}
-          limits:
-            cpu: {{ $values.openbmp.collectors.resources.limits.cpu }}
-            memory: {{ $values.openbmp.collectors.resources.limits.memory }}
-        livenessProbe:
-          tcpSocket:
-            port: 5000
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 3
-        readinessProbe:
-          tcpSocket:
-            port: 5000
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 3
-        env:
-        - name: KAFKA_FQDN
-          value: "openbmp-kafka-service:29092"
----
-{{- end }}
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: {{ .Values.core.collectors.resources.storage.size }}
