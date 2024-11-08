@@ -83,11 +83,8 @@ CORS(
 )
 
 # Initialize Flask-Talisman
-if ENVIRONMENT == 'production':
-    Talisman(app, content_security_policy=None)
-else:
-    Talisman(app, content_security_policy=None, force_https=False)
-
+Talisman(app, content_security_policy=None, force_https=False)
+    
 def compile_scss():
     scss_file = 'static/styles/main.scss'
     css_file = 'static/styles/main.css'
