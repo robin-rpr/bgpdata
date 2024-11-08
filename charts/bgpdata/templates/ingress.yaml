@@ -15,7 +15,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: {{ template "bgpdata.fullname" . }}-core-web-service
+            name: {{ template "bgpdata.fullname" . }}-core-web
             port:
               number: 80
   tls:
@@ -41,7 +41,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: {{ template "bgpdata.fullname" . }}-openbmp-whois-service
+            name: {{ template "bgpdata.fullname" . }}-openbmp-whois
             port:
               number: 43
   tls:

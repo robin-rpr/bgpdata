@@ -3,7 +3,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ template "bgpdata.fullname" . }}-core-web-service
+  name: {{ template "bgpdata.fullname" . }}-core-web
 spec:
   type: LoadBalancer
   selector:
@@ -13,34 +13,34 @@ spec:
     port: 80
     targetPort: 8080
 ---
-{{- range $i, $openbmp := until (int .Values.openbmp.collectors.hosts.routeviews.instances) }}
+{{- range $index, $collector := .Values.core.collectors.hosts.routeviews }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ template "bgpdata.fullname" $root }}-openbmp-collector-routeviews-{{ $i }}-service
+  name: {{ template "bgpdata.fullname" $root }}-openbmp-collector-{{ $collector.name | replace "." "-" }}
 spec:
   clusterIP: None
   selector:
     app: {{ template "bgpdata.fullname" $root }}-openbmp-collector
-    instance: routeviews-{{ $i }}
+    instance: {{ $collector.name | replace "." "-" }}
 {{- end }}
 ---
-{{- range $i, $openbmp := until (int .Values.openbmp.collectors.hosts.ris.instances) }}
+{{- range $index, $collector := .Values.core.collectors.hosts.ris }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ template "bgpdata.fullname" $root }}-openbmp-collector-ris-{{ $i }}-service
+  name: {{ template "bgpdata.fullname" $root }}-openbmp-collector-{{ $collector.name | replace "." "-" }}
 spec:
   clusterIP: None
   selector:
     app: {{ template "bgpdata.fullname" $root }}-openbmp-collector
-    instance: ris-{{ $i }}
+    instance: {{ $collector.name | replace "." "-" }}
 {{- end }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ template "bgpdata.fullname" . }}-openbmp-db-service
+  name: {{ template "bgpdata.fullname" . }}-openbmp-db
 spec:
   type: ClusterIP
   selector:
@@ -53,7 +53,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ template "bgpdata.fullname" . }}-openbmp-kafka-service
+  name: {{ template "bgpdata.fullname" . }}-openbmp-kafka
 spec:
   clusterIP: None
   selector:
@@ -66,7 +66,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ template "bgpdata.fullname" . }}-openbmp-zookeeper-service
+  name: {{ template "bgpdata.fullname" . }}-openbmp-zookeeper
 spec:
   clusterIP: None
   selector:
@@ -85,7 +85,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ template "bgpdata.fullname" . }}-openbmp-whois-service
+  name: {{ template "bgpdata.fullname" . }}-openbmp-whois
 spec:
   type: LoadBalancer
   selector:

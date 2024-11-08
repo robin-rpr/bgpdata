@@ -1,4 +1,5 @@
 {{- $root := . }}
+{{- $values := .Values }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -16,7 +17,7 @@ spec:
     spec:
       containers:
         {{- range $index, $collector := .Values.core.collectors.hosts.ris }}
-        - name: {{ template "bgpdata.fullname" $root }}-core-collector-ris-{{ $collector.name | replace "." "-" }}
+        - name: {{ template "bgpdata.fullname" $root }}-core-collector-{{ $collector.name | replace "." "-" }}
           image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
           command: ["python"]
           args: ["app.py", "--service", "collector"]
@@ -35,7 +36,7 @@ spec:
                 name: {{ template "bgpdata.fullname" $root }}-core-db-secret
                 key: password
           - name: OPENBMP_COLLECTORS
-            value: "{{ template "bgpdata.fullname" $root }}-openbmp-collector-ris-{{ $index }}-service:5000"
+            value: "{{ template "bgpdata.fullname" $root }}-openbmp-collector-{{ $collector.name | replace "." "-" }}:5000"
           - name: RIS_USERNAME
             valueFrom:
               secretKeyRef:
@@ -49,12 +50,12 @@ spec:
           - name: RIS_COLLECTORS
             value: {{ $collector.collectors }}
           volumeMounts:
-          - name: {{ template "bgpdata.fullname" $root }}-core-collector-ris-{{ $collector.name | replace "." "-" }}-data
+          - name: {{ template "bgpdata.fullname" $root }}-core-collector-{{ $collector.name | replace "." "-" }}
             mountPath: /app/rocks.db
         {{- end }}
 
         {{- range $index, $collector := .Values.core.collectors.hosts.routeviews }}
-        - name: {{ template "bgpdata.fullname" $root }}-core-collector-routeviews-{{ $collector.name | replace "." "-" }}
+        - name: {{ template "bgpdata.fullname" $root }}-core-collector-{{ $collector.name | replace "." "-" }}
           image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
           command: ["python"]
           args: ["app.py", "--service", "collector"]
@@ -73,7 +74,7 @@ spec:
                 name: {{ template "bgpdata.fullname" $root }}-core-db-secret
                 key: password
           - name: OPENBMP_COLLECTORS
-            value: "{{ template "bgpdata.fullname" $root }}-openbmp-collector-routeviews-{{ $index }}-service:5000"
+            value: "{{ template "bgpdata.fullname" $root }}-openbmp-collector-{{ $collector.name | replace "." "-" }}:5000"
           - name: ROUTEVIEWS_USERNAME
             valueFrom:
               secretKeyRef:
@@ -87,14 +88,26 @@ spec:
           - name: ROUTEVIEWS_COLLECTORS
             value: {{ $collector.collectors }}
           volumeMounts:
-          - name: {{ template "bgpdata.fullname" $root }}-core-collector-routeviews-{{ $collector.name | replace "." "-" }}-data
+          - name: {{ template "bgpdata.fullname" $root }}-core-collector-{{ $collector.name | replace "." "-" }}
             mountPath: /app/rocks.db
         {{- end }}
   volumeClaimTemplates:
+    {{- range $index, $collector := .Values.core.collectors.hosts.ris }}
     - metadata:
-        name: {{ template "bgpdata.fullname" . }}-core-collector-data
+        name: {{ template "bgpdata.fullname" $root }}-core-collector-{{ $collector.name | replace "." "-" }}
       spec:
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
-            storage: {{ .Values.core.collectors.resources.storage.size }}
+            storage: {{ $values.core.collectors.resources.storage.size }}
+    {{- end }}
+
+    {{- range $index, $collector := .Values.core.collectors.hosts.routeviews }}
+    - metadata:
+        name: {{ template "bgpdata.fullname" $root }}-core-collector-{{ $collector.name | replace "." "-" }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ $values.core.collectors.resources.storage.size }}
+    {{- end }}
