@@ -1,7 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ template "bgpdata.fullname" . }}-core-web-ingress
+  name: core-web-ingress
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
     traefik.ingress.kubernetes.io/router.entrypoints: web, websecure
@@ -15,19 +15,19 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: {{ template "bgpdata.fullname" . }}-core-web-service
+            name: core-web-service
             port:
               number: 80
   tls:
   - hosts:
     - bgp-data.net
-    secretName: {{ template "bgpdata.fullname" . }}-core-web-tls-secret
+    secretName: core-web-tls-secret
 
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ template "bgpdata.fullname" . }}-openbmp-whois-ingress
+  name: openbmp-whois-ingress
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
     traefik.ingress.kubernetes.io/router.entrypoints: web, websecure
@@ -41,10 +41,10 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: {{ template "bgpdata.fullname" . }}-openbmp-whois-service
+            name: openbmp-whois-service
             port:
               number: 43
   tls:
   - hosts:
     - whois.bgp-data.net
-    secretName: {{ template "bgpdata.fullname" . }}-openbmp-whois-tls-secret
+    secretName: openbmp-whois-tls-secret

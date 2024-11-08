@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ template "bgpdata.fullname" . }}-core-db
+  name: core-db
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: {{ template "bgpdata.fullname" . }}-core-db
-  serviceName: {{ template "bgpdata.fullname" . }}-core-db
+      app: core-db
+  serviceName: core-db
   template:
     metadata:
       labels:
-        app: {{ template "bgpdata.fullname" . }}-core-db
+        app: core-db
     spec:
       restartPolicy: Always
       containers:
-      - name: {{ template "bgpdata.fullname" . }}-core-db
+      - name: core-db
         image: timescale/timescaledb:latest-pg13
         livenessProbe:
           exec:
@@ -54,16 +54,16 @@ spec:
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: {{ template "bgpdata.fullname" . }}-core-db-secret
+              name: core-db-secret
               key: password
         - name: POSTGRES_DB
           value: "default"
         volumeMounts:
-        - name: {{ template "bgpdata.fullname" . }}-core-db-data
+        - name: core-db-data
           mountPath: /var/lib/postgresql/data
   volumeClaimTemplates:
   - metadata:
-      name: {{ template "bgpdata.fullname" . }}-core-db-data
+      name: core-db-data
     spec:
       accessModes: ["ReadWriteOnce"]
       resources:

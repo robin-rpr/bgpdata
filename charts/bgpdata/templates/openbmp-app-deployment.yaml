@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ template "bgpdata.fullname" . }}-openbmp-app
+  name: openbmp-app
 spec:
   replicas: {{ .Values.openbmp.app.replicas }}
   selector:
     matchLabels:
-      app: {{ template "bgpdata.fullname" . }}-openbmp-app
+      app: openbmp-app
   template:
     metadata:
       labels:
-        app: {{ template "bgpdata.fullname" . }}-openbmp-app
+        app: openbmp-app
     spec:
       restartPolicy: Always
       securityContext:
@@ -22,7 +22,7 @@ spec:
         - name: net.ipv4.tcp_keepalive_time
           value: "180"
       containers:
-      - name: {{ template "bgpdata.fullname" . }}-openbmp-app
+      - name: openbmp-app
         image: openbmp/psql-app:2.2.2
         resources:
           requests:
@@ -37,7 +37,7 @@ spec:
         - name: MEM
           value: "3"                                     # Set memory to at least 2GB but ideally 4GB
         - name: KAFKA_FQDN
-          value: "{{ template "bgpdata.fullname" . }}-openbmp-kafka-service:29092"
+          value: "openbmp-kafka-service:29092"
         - name: RPKI_URL
           value: "https://rpki.cloudflare.com/rpki.json" # define the URL to retrieve json endoed RPKI data
         - name: RPKI_PASS
@@ -55,7 +55,7 @@ spec:
                                                          #   summary tables. For deployments that absorb large
                                                          #   bursts increase the value, ex 60 minute
         - name: POSTGRES_HOST
-          value: "{{ template "bgpdata.fullname" . }}-openbmp-db-service"
+          value: "openbmp-db-service"
         - name: POSTGRES_PORT
           value: "5432"
         - name: POSTGRES_USER
@@ -65,7 +65,7 @@ spec:
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: {{ template "bgpdata.fullname" . }}-openbmp-db-secret
+              name: openbmp-db-secret
               key: password
         - name: POSTGRES_DROP_peer_event_log
           value: "1 month"
