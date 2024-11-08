@@ -70,7 +70,6 @@ As well as a Grafana dashboard at [`http://localhost:3000`](http://localhost:300
 
 -   [RIS](https://ris.ripe.net/) for providing the data and collector infrastructure
 -   [Route Views](https://www.routeviews.org/) for providing the data and collector infrastructure
--   [RIPE NCC](https://www.ripe.net/) for providing the RIS Live Kafka infrastructure
 -   [OpenBMP](https://www.openbmp.org/) for providing the invaluable OpenBMP Suite used in-depth in this project
 -   [Tim Evens](https://github.com/TimEvens) for his leading role in the development of the OpenBMP Suite
 -   [RIPEstat](https://stat.ripe.net/) for their incredible infrastructure and data visualization
