@@ -1,27 +1,28 @@
+{{- $root := . }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: core-collector
+  name: {{ template "bgpdata.fullname" . }}-core-collector
 spec:
-  serviceName: "core-collector"
+  serviceName: "{{ template "bgpdata.fullname" . }}-core-collector"
   replicas: {{ add (len .Values.core.collectors.hosts.ris) (len .Values.core.collectors.hosts.routeviews) }}
   selector:
     matchLabels:
-      app: core-collector
+      app: {{ template "bgpdata.fullname" . }}-core-collector
   template:
     metadata:
       labels:
-        app: core-collector
+        app: {{ template "bgpdata.fullname" . }}-core-collector
     spec:
       containers:
         {{- range $index, $collector := .Values.core.collectors.hosts.ris }}
-        - name: core-collector-ris-{{ $collector.name }}
+        - name: {{ template "bgpdata.fullname" $root }}-core-collector-ris-{{ $collector.name }}
           image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
           command: ["python"]
           args: ["app.py", "--service", "collector"]
           env:
           - name: POSTGRESQL_HOST
-            value: "core-db"
+            value: "{{ template "bgpdata.fullname" $root }}-core-db"
           - name: POSTGRESQL_PORT
             value: "5432"
           - name: POSTGRESQL_USER
@@ -31,35 +32,35 @@ spec:
           - name: POSTGRES_PASSWORD
             valueFrom:
               secretKeyRef:
-                name: core-db-secret
+                name: {{ template "bgpdata.fullname" $root }}-core-db-secret
                 key: password
           - name: OPENBMP_COLLECTORS
-            value: "openbmp-collector-ris-{{ $index }}-service:5000"
+            value: "{{ template "bgpdata.fullname" $root }}-openbmp-collector-ris-{{ $index }}-service:5000"
           - name: RIS_USERNAME
             valueFrom:
               secretKeyRef:
-                name: core-collector-secret-ris
+                name: {{ template "bgpdata.fullname" $root }}-core-collector-secret-ris
                 key: username
           - name: RIS_PASSWORD
             valueFrom:
               secretKeyRef:
-                name: core-collector-secret-ris
+                name: {{ template "bgpdata.fullname" $root }}-core-collector-secret-ris
                 key: password
           - name: RIS_COLLECTORS
             value: {{ $collector.collectors }}
           volumeMounts:
-          - name: core-collector-ris-{{ $collector.name }}-data
+          - name: {{ template "bgpdata.fullname" $root }}-core-collector-ris-{{ $collector.name }}-data
             mountPath: /app/rocks.db
         {{- end }}
 
         {{- range $index, $collector := .Values.core.collectors.hosts.routeviews }}
-        - name: core-collector-routeviews-{{ $collector.name }}
+        - name: {{ template "bgpdata.fullname" $root }}-core-collector-routeviews-{{ $collector.name }}
           image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
           command: ["python"]
           args: ["app.py", "--service", "collector"]
           env:
           - name: POSTGRESQL_HOST
-            value: "core-db"
+            value: "{{ template "bgpdata.fullname" $root }}-core-db"
           - name: POSTGRESQL_PORT
             value: "5432"
           - name: POSTGRESQL_USER
@@ -69,29 +70,29 @@ spec:
           - name: POSTGRES_PASSWORD
             valueFrom:
               secretKeyRef:
-                name: core-db-secret
+                name: {{ template "bgpdata.fullname" $root }}-core-db-secret
                 key: password
           - name: OPENBMP_COLLECTORS
-            value: "openbmp-collector-routeviews-{{ $index }}-service:5000"
+            value: "{{ template "bgpdata.fullname" $root }}-openbmp-collector-routeviews-{{ $index }}-service:5000"
           - name: ROUTEVIEWS_USERNAME
             valueFrom:
               secretKeyRef:
-                name: core-collector-secret-routeviews
+                name: {{ template "bgpdata.fullname" $root }}-core-collector-secret-routeviews
                 key: username
           - name: ROUTEVIEWS_PASSWORD
             valueFrom:
               secretKeyRef:
-                name: core-collector-secret-routeviews
+                name: {{ template "bgpdata.fullname" $root }}-core-collector-secret-routeviews
                 key: password
           - name: ROUTEVIEWS_COLLECTORS
             value: {{ $collector.collectors }}
           volumeMounts:
-          - name: core-collector-routeviews-{{ $collector.name }}-data
+          - name: {{ template "bgpdata.fullname" $root }}-core-collector-routeviews-{{ $collector.name }}-data
             mountPath: /app/rocks.db
         {{- end }}
   volumeClaimTemplates:
     - metadata:
-        name: core-collector-data
+        name: {{ template "bgpdata.fullname" . }}-core-collector-data
       spec:
         accessModes: ["ReadWriteOnce"]
         resources:

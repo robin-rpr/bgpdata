@@ -1,17 +1,17 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: openbmp-db
+  name: {{ template "bgpdata.fullname" . }}-openbmp-db
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: openbmp-db
-  serviceName: openbmp-db
+      app: {{ template "bgpdata.fullname" . }}-openbmp-db
+  serviceName: {{ template "bgpdata.fullname" . }}-openbmp-db
   template:
     metadata:
       labels:
-        app: openbmp-db
+        app: {{ template "bgpdata.fullname" . }}-openbmp-db
     spec:
       restartPolicy: Always
       securityContext:
@@ -23,7 +23,7 @@ spec:
         - name: net.ipv4.tcp_keepalive_time
           value: "180"
       containers:
-      - name: openbmp-db
+      - name: {{ template "bgpdata.fullname" . }}-openbmp-db
         image: openbmp/postgres:2.2.1
         livenessProbe:
           exec:
@@ -58,15 +58,15 @@ spec:
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: openbmp-db-secret
+              name: {{ template "bgpdata.fullname" . }}-openbmp-db-secret
               key: password
         - name: POSTGRES_DB
           value: "openbmp"
         volumeMounts:
-        - name: openbmp-db-data
+        - name: {{ template "bgpdata.fullname" . }}-openbmp-db-data
           mountPath: /var/lib/postgresql/data
         volumes:
-        - name: openbmp-db-data
+        - name: {{ template "bgpdata.fullname" . }}-openbmp-db-data
           emptyDir:
             medium: "Memory" # We don't need persistent storage for the database
             sizeLimit: {{ .Values.openbmp.database.resources.storage.size }}

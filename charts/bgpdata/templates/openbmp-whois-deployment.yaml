@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: openbmp-whois
+  name: {{ template "bgpdata.fullname" . }}-openbmp-whois
 spec:
   replicas: {{ .Values.openbmp.whois.replicas }}
   selector:
     matchLabels:
-      app: openbmp-whois
+      app: {{ template "bgpdata.fullname" . }}-openbmp-whois
   template:
     metadata:
       labels:
-        app: openbmp-whois
+        app: {{ template "bgpdata.fullname" . }}-openbmp-whois
     spec:
       restartPolicy: Always
       securityContext:
@@ -22,7 +22,7 @@ spec:
         - name: net.ipv4.tcp_keepalive_time
           value: "180"
       containers:
-      - name: openbmp-whois
+      - name: {{ template "bgpdata.fullname" . }}-openbmp-whois
         image: openbmp/whois:2.2.0
         livenessProbe:
           httpGet:
@@ -49,7 +49,7 @@ spec:
         - containerPort: 9005
         env:
         - name: POSTGRESQL_HOST
-          value: "openbmp-db-service"
+          value: "{{ template "bgpdata.fullname" . }}-openbmp-db-service"
         - name: POSTGRESQL_PORT
           value: "5432"
         - name: POSTGRESQL_USER
@@ -59,6 +59,6 @@ spec:
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: openbmp-db-secret
+              name: {{ template "bgpdata.fullname" . }}-openbmp-db-secret
               key: password
       serviceAccountName: default
