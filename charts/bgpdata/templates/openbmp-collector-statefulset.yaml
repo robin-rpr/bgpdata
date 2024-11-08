@@ -25,7 +25,7 @@ spec:
           value: "180"
       containers:
         {{- range $index, $collector := .Values.core.collectors.hosts.ris }}
-        - name: {{ template "bgpdata.fullname" $root }}-openbmp-collector-ris-{{ $collector.name }}
+        - name: {{ template "bgpdata.fullname" $root }}-openbmp-collector-ris-{{ $collector.name | replace "." "-" }}
           image: openbmp/collector:2.2.3
           resources:
             requests:
@@ -54,7 +54,7 @@ spec:
         {{- end }}
 
         {{- range $index, $collector := .Values.core.collectors.hosts.routeviews }}
-        - name: {{ template "bgpdata.fullname" $root }}-openbmp-collector-routeviews-{{ $collector.name }}
+        - name: {{ template "bgpdata.fullname" $root }}-openbmp-collector-routeviews-{{ $collector.name | replace "." "-" }}
           image: openbmp/collector:2.2.3
           resources:
             requests:

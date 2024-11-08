@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         {{- range $index, $collector := .Values.core.collectors.hosts.ris }}
-        - name: {{ template "bgpdata.fullname" $root }}-core-collector-ris-{{ $collector.name }}
+        - name: {{ template "bgpdata.fullname" $root }}-core-collector-ris-{{ $collector.name | replace "." "-" }}
           image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
           command: ["python"]
           args: ["app.py", "--service", "collector"]
@@ -49,12 +49,12 @@ spec:
           - name: RIS_COLLECTORS
             value: {{ $collector.collectors }}
           volumeMounts:
-          - name: {{ template "bgpdata.fullname" $root }}-core-collector-ris-{{ $collector.name }}-data
+          - name: {{ template "bgpdata.fullname" $root }}-core-collector-ris-{{ $collector.name | replace "." "-" }}-data
             mountPath: /app/rocks.db
         {{- end }}
 
         {{- range $index, $collector := .Values.core.collectors.hosts.routeviews }}
-        - name: {{ template "bgpdata.fullname" $root }}-core-collector-routeviews-{{ $collector.name }}
+        - name: {{ template "bgpdata.fullname" $root }}-core-collector-routeviews-{{ $collector.name | replace "." "-" }}
           image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
           command: ["python"]
           args: ["app.py", "--service", "collector"]
@@ -87,7 +87,7 @@ spec:
           - name: ROUTEVIEWS_COLLECTORS
             value: {{ $collector.collectors }}
           volumeMounts:
-          - name: {{ template "bgpdata.fullname" $root }}-core-collector-routeviews-{{ $collector.name }}-data
+          - name: {{ template "bgpdata.fullname" $root }}-core-collector-routeviews-{{ $collector.name | replace "." "-" }}-data
             mountPath: /app/rocks.db
         {{- end }}
   volumeClaimTemplates:
