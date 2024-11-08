@@ -21,6 +21,11 @@ spec:
           image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
           command: ["python"]
           args: ["app.py", "--service", "collector"]
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "python3 -c 'import rocksdb; db = rocksdb.DB(\"rocks.db\", rocksdb.Options(create_if_missing=False)); exit(0) if db.get(b\"ready\") == b\"\\x01\" else exit(1)'"]
+            periodSeconds: 60
+            failureThreshold: 3
           env:
           - name: POSTGRESQL_HOST
             value: "{{ template "bgpdata.fullname" $root }}-core-db"
@@ -59,6 +64,11 @@ spec:
           image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
           command: ["python"]
           args: ["app.py", "--service", "collector"]
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "python3 -c 'import rocksdb; db = rocksdb.DB(\"rocks.db\", rocksdb.Options(create_if_missing=False)); exit(0) if db.get(b\"ready\") == b\"\\x01\" else exit(1)'"]
+            periodSeconds: 60
+            failureThreshold: 3
           env:
           - name: POSTGRESQL_HOST
             value: "{{ template "bgpdata.fullname" $root }}-core-db"
