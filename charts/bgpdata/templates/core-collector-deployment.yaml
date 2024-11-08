@@ -1,29 +1,4 @@
-{{- define "openbmp_collectors_ris" -}}
 {{- $values := .Values }}
-{{- $collectors := "" -}}
-{{- range $i, $openbmp := until (int $values.openbmp.collectors.hosts.ris.instances) -}}
-  {{- $collectors = printf "%sopenbmp-collector-ris-%d:5000" $collectors $i -}}
-  {{- if lt (add1 $i) (int $values.openbmp.collectors.hosts.ris.instances) -}}
-    {{- $collectors = printf "%s," $collectors -}}
-  {{- end -}}
-{{- end -}}
-{{- $collectors -}}
-{{- end }}
-
-{{- define "openbmp_collectors_routeviews" -}}
-{{- $values := .Values }}
-{{- $collectors := "" -}}
-{{- range $i, $openbmp := until (int $values.openbmp.collectors.hosts.routeviews.instances) -}}
-  {{- $collectors = printf "%sopenbmp-collector-routeviews-%d:5000" $collectors $i -}}
-  {{- if lt (add1 $i) (int $values.openbmp.collectors.hosts.routeviews.instances) -}}
-    {{- $collectors = printf "%s," $collectors -}}
-  {{- end -}}
-{{- end -}}
-{{- $collectors -}}
-{{- end }}
-
-{{- $values := .Values }}
-
 {{- range $index, $collector := $values.core.collectors.hosts.ris }}
 apiVersion: apps/v1
 kind: Deployment
@@ -44,6 +19,13 @@ spec:
         instance: {{ $collector.name }}
     spec:
       restartPolicy: Always
+      {{- if gt $index 0 }}
+      initContainers:
+      - name: wait-for-previous
+        image: bitnami/kubectl:latest
+        command: ["sh", "-c", "while true; do if kubectl get pod core-collector-ris-{{ (sub $index 1) }} -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q 'True'; then break; else sleep 300; fi; done"]
+        serviceAccountName: core-collector-sa
+      {{- end }}
       containers:
       - name: core-collector
         image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
@@ -71,7 +53,7 @@ spec:
               name: core-db-secret
               key: password
         - name: OPENBMP_COLLECTORS
-          value: {{ include "openbmp_collectors_ris" . }}
+          value: "openbmp-collector-ris-{{ $index }}:5000"
         - name: RIS_USERNAME
           valueFrom:
             secretKeyRef:
@@ -84,6 +66,17 @@ spec:
               key: password
         - name: RIS_COLLECTORS
           value: {{ $collector.collectors }}
+        volumeMounts:
+        - name: core-collector-ris-{{ $collector.name }}-data
+          mountPath: /app/rocks.db
+    volumeClaimTemplates:
+    - metadata:
+        name: core-collector-ris-{{ $collector.name }}-data
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: {{ $values.core.collectors.resources.storage.size }}
 ---
 {{- end }}
 
@@ -106,11 +99,24 @@ spec:
         group: route-views
         instance: {{ $collector.name }}
     spec:
+      restartPolicy: Always
+      {{- if gt $index 0 }}
+      initContainers:
+      - name: wait-for-previous
+        image: bitnami/kubectl:latest
+        command: ["sh", "-c", "while true; do if kubectl get pod core-collector-routeviews-{{ (sub $index 1) }} -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q 'True'; then break; else sleep 300; fi; done"]
+        serviceAccountName: core-collector-sa
+      {{- end }}
       containers:
       - name: core-collector
         image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
         command: ["python"]
         args: ["app.py", "--service", "collector"]
+        readinessProbe:
+          exec:
+            command: ["sh", "-c", "python3 -c 'import rocksdb; db = rocksdb.DB(\"rocks.db\", rocksdb.Options(create_if_missing=False)); exit(0) if db.get(b\"ready\") == b\"\\x01\" else exit(1)'"]
+          periodSeconds: 60
+          failureThreshold: 3
         resources:
           requests:
             cpu: {{ $values.core.collectors.resources.requests.cpu }}
@@ -133,7 +139,7 @@ spec:
               name: core-db-secret
               key: password
         - name: OPENBMP_COLLECTORS
-          value: {{ include "openbmp_collectors_routeviews" . }}
+          value: "openbmp-collector-routeviews-{{ $index }}:5000"
         - name: ROUTEVIEWS_USERNAME
           valueFrom:
             secretKeyRef:
@@ -146,5 +152,16 @@ spec:
               key: password
         - name: ROUTEVIEWS_COLLECTORS
           value: {{ $collector.collectors }}
+        volumeMounts:
+        - name: core-collector-routeviews-{{ $collector.name }}-data
+          mountPath: /app/rocks.db
+    volumeClaimTemplates:
+    - metadata:
+        name: core-collector-{{ $collector.name }}-data
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: {{ $values.core.collectors.resources.storage.size }}
 ---
 {{- end }}

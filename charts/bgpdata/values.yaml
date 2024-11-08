@@ -16,6 +16,8 @@ core:
       limits:
         cpu: "1"
         memory: "2Gi"
+      storage:
+        size: "100Mi"
     secrets:
       ris:
         username: "public"

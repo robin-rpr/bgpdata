@@ -372,7 +372,7 @@ def kafka_task(configuration, collectors, topics, queue, db, status, batch_size,
                     events[key].wait()
 
             # Mark the RIBs injection as fulfilled
-            db.set(b'injections_ended', b'\x01')
+            db.set(b'ready', b'\x01')
 
     # Log the provision
     logger.info(f"Subscribed to {provider} Kafka Consumer")
@@ -534,7 +534,7 @@ def sender_task(queue, host, port, db, status):
 
                     if not sent_message:
                         sent_message = True  # Mark that a message has been sent
-                        db.set(b'injections_started', b'\x01')
+                        db.set(b'started', b'\x01')
 
                     if partition != -1:
                         key = f'offsets_{topic}_{partition}'.encode('utf-8')
@@ -718,15 +718,14 @@ async def main():
         executor = ThreadPoolExecutor(max_workers=workers)
 
         # Whether the RIBs injection started
-        injections_started = True if db.get(
-            b'injections_started') == b'\x01' else False
-        # Whether the RIBs injection ended (important)
-        injections_ended = True if db.get(
-            b'injections_ended') == b'\x01' else False
+        started = True if db.get(
+            b'started') == b'\x01' else False
+        # Whether the RIBs injection finished
+        ready = True if db.get(
+            b'ready') == b'\x01' else False
 
-        # We need to ensure all RIBs are fully injected
-        if injections_started and injections_ended:
-            # Everything is initialized
+        # Set the events
+        if started and ready:
             if len(routeviews_collectors) > 0:
                 events['route-views_injection'].set()
                 events['route-views_provision'].set()
@@ -734,7 +733,7 @@ async def main():
                 events['ris_injection'].set()
                 events['ris_provision'].set()
 
-        elif injections_started and not injections_ended:
+        elif started and not ready:
             # Database is corrupted, we need to exit
             logger.error("RIBs injection is corrupted, exiting...")
             raise Exception("Database is corrupted, exiting...")
