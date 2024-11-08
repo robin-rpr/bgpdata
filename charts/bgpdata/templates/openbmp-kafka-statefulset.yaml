@@ -1,17 +1,17 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: openbmp-kafka
+  name: {{ template "bgpdata.fullname" . }}-openbmp-kafka
 spec:
   replicas: {{ .Values.openbmp.kafka.kafka.replicas }}
   selector:
     matchLabels:
-      app: openbmp-kafka
-  serviceName: openbmp-kafka
+      app: {{ template "bgpdata.fullname" . }}-openbmp-kafka
+  serviceName: {{ template "bgpdata.fullname" . }}-openbmp-kafka
   template:
     metadata:
       labels:
-        app: openbmp-kafka
+        app: {{ template "bgpdata.fullname" . }}-openbmp-kafka
     spec:
       restartPolicy: Always
       containers:
@@ -22,7 +22,7 @@ spec:
             command:
             - kafka-broker-api-versions
             - --bootstrap-server
-            - openbmp-kafka-service:29092
+            - {{ template "bgpdata.fullname" . }}-openbmp-kafka-service:29092
           periodSeconds: 30
           timeoutSeconds: 10
           failureThreshold: 10
@@ -31,7 +31,7 @@ spec:
             command:
             - kafka-broker-api-versions
             - --bootstrap-server
-            - openbmp-kafka-service:29092
+            - {{ template "bgpdata.fullname" . }}-openbmp-kafka-service:29092
           periodSeconds: 30
           timeoutSeconds: 10
           failureThreshold: 10
@@ -41,9 +41,9 @@ spec:
         - name: KAFKA_BROKER_ID
           value: "$(expr $${HOSTNAME##*-} + 1)"
         - name: KAFKA_ZOOKEEPER_CONNECT
-          value: "openbmp-zookeeper-service:2181"
+          value: "{{ template "bgpdata.fullname" . }}-openbmp-zookeeper-service:2181"
         - name: KAFKA_ADVERTISED_LISTENERS
-          value: "PLAINTEXT://openbmp-kafka-service:29092"
+          value: "PLAINTEXT://{{ template "bgpdata.fullname" . }}-openbmp-kafka-service:29092"
         - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
           value: "3"
         resources:

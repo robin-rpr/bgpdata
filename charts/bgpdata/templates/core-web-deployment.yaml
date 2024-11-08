@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: core-web
+  name: {{ template "bgpdata.fullname" . }}-core-web
 spec:
   replicas: {{ .Values.core.web.replicas }}
   selector:
     matchLabels:
-      app: core-web
+      app: {{ template "bgpdata.fullname" . }}-core-web
   template:
     metadata:
       labels:
-        app: core-web
+        app: {{ template "bgpdata.fullname" . }}-core-web
     spec:
       restartPolicy: Always
       containers:
-      - name: core-web
+      - name: {{ template "bgpdata.fullname" . }}-core-web
         image: bgpdata/bgpdata:{{ $.Chart.AppVersion }}
         command: ["/bin/sh", "-c"]
         args:
@@ -54,7 +54,7 @@ spec:
         - containerPort: 8080
         env:
         - name: POSTGRESQL_HOST
-          value: core-db
+          value: {{ template "bgpdata.fullname" . }}-core-db
         - name: POSTGRESQL_PORT
           value: "5432"
         - name: POSTGRESQL_USER
@@ -64,6 +64,6 @@ spec:
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: core-db-secret
+              name: {{ template "bgpdata.fullname" . }}-core-db-secret
               key: password
       serviceAccountName: default

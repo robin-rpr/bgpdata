@@ -1,17 +1,17 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: openbmp-zookeeper
+  name: {{ template "bgpdata.fullname" . }}-openbmp-zookeeper
 spec:
   replicas: {{ .Values.openbmp.kafka.zookeeper.replicas }}
   selector:
     matchLabels:
-      app: openbmp-zookeeper
-  serviceName: openbmp-zookeeper
+      app: {{ template "bgpdata.fullname" . }}-openbmp-zookeeper
+  serviceName: {{ template "bgpdata.fullname" . }}-openbmp-zookeeper
   template:
     metadata:
       labels:
-        app: openbmp-zookeeper
+        app: {{ template "bgpdata.fullname" . }}-openbmp-zookeeper
     spec:
       restartPolicy: Always
       containers:

@@ -1,11 +1,13 @@
+{{- $root := . }}
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: core-web-service
+  name: {{ template "bgpdata.fullname" . }}-core-web-service
 spec:
   type: LoadBalancer
   selector:
-    app: core-web
+    app: {{ template "bgpdata.fullname" . }}-core-web
   ports:
   - protocol: TCP
     port: 80
@@ -15,11 +17,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: openbmp-collector-routeviews-{{ $i }}-service
+  name: {{ template "bgpdata.fullname" $root }}-openbmp-collector-routeviews-{{ $i }}-service
 spec:
   clusterIP: None
   selector:
-    app: openbmp-collector
+    app: {{ template "bgpdata.fullname" $root }}-openbmp-collector
     instance: routeviews-{{ $i }}
 {{- end }}
 ---
@@ -27,22 +29,22 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: openbmp-collector-ris-{{ $i }}-service
+  name: {{ template "bgpdata.fullname" $root }}-openbmp-collector-ris-{{ $i }}-service
 spec:
   clusterIP: None
   selector:
-    app: openbmp-collector
+    app: {{ template "bgpdata.fullname" $root }}-openbmp-collector
     instance: ris-{{ $i }}
 {{- end }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: openbmp-db-service
+  name: {{ template "bgpdata.fullname" . }}-openbmp-db-service
 spec:
   type: ClusterIP
   selector:
-    app: openbmp-db
+    app: {{ template "bgpdata.fullname" . }}-openbmp-db
   ports:
   - name: postgres
     port: 5432
@@ -51,11 +53,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: openbmp-kafka-service
+  name: {{ template "bgpdata.fullname" . }}-openbmp-kafka-service
 spec:
   clusterIP: None
   selector:
-    app: openbmp-kafka
+    app: {{ template "bgpdata.fullname" . }}-openbmp-kafka
   ports:
   - name: broker
     port: 29092
@@ -64,11 +66,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: openbmp-zookeeper-service
+  name: {{ template "bgpdata.fullname" . }}-openbmp-zookeeper-service
 spec:
   clusterIP: None
   selector:
-    app: openbmp-zookeeper
+    app: {{ template "bgpdata.fullname" . }}-openbmp-zookeeper
   ports:
   - name: client
     port: 2181
@@ -83,11 +85,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: openbmp-whois-service
+  name: {{ template "bgpdata.fullname" . }}-openbmp-whois-service
 spec:
   type: LoadBalancer
   selector:
-    app: openbmp-whois
+    app: {{ template "bgpdata.fullname" . }}-openbmp-whois
   ports:
   - protocol: TCP
     port: 43

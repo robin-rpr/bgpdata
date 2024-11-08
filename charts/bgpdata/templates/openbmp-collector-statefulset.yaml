@@ -1,17 +1,18 @@
+{{- $root := . }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: openbmp-collector
+  name: {{ template "bgpdata.fullname" . }}-openbmp-collector
 spec:
-  serviceName: "openbmp-collector"
+  serviceName: "{{ template "bgpdata.fullname" . }}-openbmp-collector"
   replicas: 1
   selector:
     matchLabels:
-      app: openbmp-collector
+      app: {{ template "bgpdata.fullname" . }}-openbmp-collector
   template:
     metadata:
       labels:
-        app: openbmp-collector
+        app: {{ template "bgpdata.fullname" . }}-openbmp-collector
     spec:
       restartPolicy: Always
       securityContext:
@@ -24,7 +25,7 @@ spec:
           value: "180"
       containers:
         {{- range $index, $collector := .Values.core.collectors.hosts.ris }}
-        - name: openbmp-collector-ris-{{ $collector.name }}
+        - name: {{ template "bgpdata.fullname" $root }}-openbmp-collector-ris-{{ $collector.name }}
           image: openbmp/collector:2.2.3
           resources:
             requests:
@@ -35,7 +36,7 @@ spec:
               memory: {{ $.Values.openbmp.collectors.resources.limits.memory }}
           env:
           - name: KAFKA_FQDN
-            value: "openbmp-kafka-service:29092"
+            value: "{{ template "bgpdata.fullname" $root }}-openbmp-kafka-service:29092"
           - name: UNIQUE_COLLECTOR
             value: {{ $collector.collectors }}
           livenessProbe:
@@ -53,7 +54,7 @@ spec:
         {{- end }}
 
         {{- range $index, $collector := .Values.core.collectors.hosts.routeviews }}
-        - name: openbmp-collector-routeviews-{{ $collector.name }}
+        - name: {{ template "bgpdata.fullname" $root }}-openbmp-collector-routeviews-{{ $collector.name }}
           image: openbmp/collector:2.2.3
           resources:
             requests:
@@ -64,7 +65,7 @@ spec:
               memory: {{ $.Values.openbmp.collectors.resources.limits.memory }}
           env:
           - name: KAFKA_FQDN
-            value: "openbmp-kafka-service:29092"
+            value: "{{ template "bgpdata.fullname" $root }}-openbmp-kafka-service:29092"
           - name: UNIQUE_COLLECTOR
             value: {{ $collector.collectors }}
           livenessProbe:
