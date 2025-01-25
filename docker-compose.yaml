@@ -97,21 +97,46 @@ services:
             OPENBMP_COLLECTORS: openbmp-collector:5000
             # List of Route Views collectors
             # https://www.routeviews.org/
-            #ROUTEVIEWS_USERNAME: public
-            #ROUTEVIEWS_PASSWORD: public
-            #ROUTEVIEWS_COLLECTORS: |
-            #   route-views:101,
-            #   route-views:3333,
-            #   route-views:4901,
-            #   route-views:20080,
-            #   route-views:57866
+            ROUTEVIEWS_COLLECTORS: |
+               route-views.amsix:1103,
+               route-views.amsix:3214,
+               route-views.amsix:3399,
+               route-views.amsix:6762,
+               route-views.amsix:6830,
+               route-views.amsix:8888,
+               route-views.amsix:9002,
+               route-views.amsix:12779,
+               route-views.amsix:12859,
+               route-views.amsix:16509,
+               route-views.amsix:16552,
+               route-views.amsix:30844,
+               route-views.amsix:38880,
+               route-views.amsix:39591,
+               route-views.amsix:42541,
+               route-views.amsix:44324,
+               route-views.amsix:47957,
+               route-views.amsix:50763,
+               route-views.amsix:51019,
+               route-views.amsix:51088,
+               route-views.amsix:56662,
+               route-views.amsix:58511,
+               route-views.amsix:60144,
+               route-views.amsix:60150,
+               route-views.amsix:61955,
+               route-views.amsix:199524,
+               route-views.amsix:200242,
+               route-views.amsix:208753,
+               route-views.amsix:211398,
+               route-views.amsix:213151,
+               route-views.amsix:216311,
+               route-views.amsix:267613
             # List of RIPE Route Collectors
             # https://ris.ripe.net
-            RIS_USERNAME: public
-            RIS_PASSWORD: public
-            RIS_COLLECTORS: |
-                rrc00,
-                rrc01
+            #RIS_USERNAME: public
+            #RIS_PASSWORD: public
+            #RIS_COLLECTORS: |
+            #    rrc00,
+            #    rrc01
             LOG_LEVEL: DEBUG
         depends_on:
             openbmp-collector:
@@ -208,11 +233,6 @@ services:
         image: openbmp/psql-app:2.2.2
         platform: linux/amd64
         restart: unless-stopped
-        healthcheck:
-            test: ["CMD", "curl", "-f", "http://localhost:9005"]
-            interval: 30s
-            timeout: 10s
-            retries: 3
         sysctls:
             - net.ipv4.tcp_keepalive_intvl=30
             - net.ipv4.tcp_keepalive_probes=5
@@ -222,8 +242,6 @@ services:
                 condition: service_healthy
             openbmp-kafka:
                 condition: service_healthy
-        ports:
-            - "9005:9005"
         volumes:
             - obmp_cf_data:/config
         environment:
@@ -282,7 +300,7 @@ services:
         platform: linux/amd64
         restart: unless-stopped
         healthcheck:
-            test: ["CMD", "curl", "-f", "http://localhost:43"]
+            test: ["CMD-SHELL", "cat", "< /dev/null >", "/dev/tcp/localhost/43"]
             interval: 30s
             timeout: 10s
             retries: 3
@@ -321,7 +339,7 @@ services:
         healthcheck:
             test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "openbmp-kafka:29092"]
             interval: 30s
-            timeout: 10s
+            timeout: 60s # Command may take some time.
             retries: 10
         # Change the mount point to where you want to store Kafka data.
         #   Normally 80GB or more
@@ -332,11 +350,12 @@ services:
         environment:
             KAFKA_BROKER_ID: 1
             KAFKA_ZOOKEEPER_CONNECT: openbmp-zookeeper:2181
+            KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
             # Change/add listeners based on your FQDN that the host and other containers can access.  You can use
             #    an IP address as well. By default, only within the compose/containers can Kafka be accesssed
             #    using port 29092. Outside access can be enabled, but you should use an FQDN listener.
             #KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://<FQDN>:9092
-            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://openbmp-kafka:29092
+            KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://openbmp-kafka:29092,PLAINTEXT_HOST://localhost:9092
             KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
             KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
             KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
@@ -352,10 +371,11 @@ services:
         image: grafana/grafana:9.1.7
         restart: unless-stopped
         healthcheck:
-            test: ["CMD", "curl", "-f", "http://localhost:3000"]
+            test: ["CMD", "wget", "--spider", "http://localhost:3000"]
             interval: 30s
             timeout: 10s
             retries: 3
+        user: root
         ports:
             - "3000:3000"
         volumes:

@@ -23,7 +23,7 @@ spec:
           args: ["app.py", "--service", "collector"]
           readinessProbe:
             exec:
-              command: ["sh", "-c", "python3 -c 'import rocksdb; db = rocksdb.DB(\"rocks.db\", rocksdb.Options(create_if_missing=False)); exit(0) if db.get(b\"ready\") == b\"\\x01\" else exit(1)'"]
+              command: ["sh", "-c", "python3 -c 'import rocksdb; db = rocksdb.DB(\".rocksdb\", rocksdb.Options(create_if_missing=False)); exit(0) if db.get(b\"ready\") == b\"\\x01\" else exit(1)'"]
             periodSeconds: 60
             failureThreshold: 3
           env:
@@ -56,7 +56,7 @@ spec:
             value: {{ $collector.collectors }}
           volumeMounts:
           - name: {{ template "bgpdata.fullname" $root }}-core-collector-{{ $collector.name | replace "." "-" }}
-            mountPath: /app/rocks.db
+            mountPath: /app/.rocksdb
         {{- end }}
 
         {{- range $index, $collector := .Values.core.collectors.hosts.routeviews }}
@@ -66,7 +66,7 @@ spec:
           args: ["app.py", "--service", "collector"]
           readinessProbe:
             exec:
-              command: ["sh", "-c", "python3 -c 'import rocksdb; db = rocksdb.DB(\"rocks.db\", rocksdb.Options(create_if_missing=False)); exit(0) if db.get(b\"ready\") == b\"\\x01\" else exit(1)'"]
+              command: ["sh", "-c", "python3 -c 'import rocksdb; db = rocksdb.DB(\".rocksdb\", rocksdb.Options(create_if_missing=False)); exit(0) if db.get(b\"ready\") == b\"\\x01\" else exit(1)'"]
             periodSeconds: 60
             failureThreshold: 3
           env:
@@ -85,21 +85,11 @@ spec:
                 key: password
           - name: OPENBMP_COLLECTORS
             value: "{{ template "bgpdata.fullname" $root }}-openbmp-collector-{{ $collector.name | replace "." "-" }}:5000"
-          - name: ROUTEVIEWS_USERNAME
-            valueFrom:
-              secretKeyRef:
-                name: {{ template "bgpdata.fullname" $root }}-core-collector-secret-routeviews
-                key: username
-          - name: ROUTEVIEWS_PASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: {{ template "bgpdata.fullname" $root }}-core-collector-secret-routeviews
-                key: password
           - name: ROUTEVIEWS_COLLECTORS
             value: {{ $collector.collectors }}
           volumeMounts:
           - name: {{ template "bgpdata.fullname" $root }}-core-collector-{{ $collector.name | replace "." "-" }}
-            mountPath: /app/rocks.db
+            mountPath: /app/.rocksdb
         {{- end }}
   volumeClaimTemplates:
     {{- range $index, $collector := .Values.core.collectors.hosts.ris }}

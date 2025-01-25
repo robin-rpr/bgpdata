@@ -78,7 +78,7 @@ class BMPv3:
             collector (str): The collector name
             peer_ip (str): The peer IP address
             peer_asn (int): The peer AS number
-            timestamp (float): The timestamp
+            timestamp (float): Unix timestamp
             msg_type (str): The message type
             path (list): The AS path
             origin (str): The origin
@@ -210,10 +210,10 @@ class BMPv3:
             )
             bmp_messages.append(bmp_message)
 
-        # Handle RIS_PEER_STATE messages
-        elif msg_type.upper() == "RIS_PEER_STATE":
+        # Handle PEER_STATE messages
+        elif msg_type.upper() == "PEER_STATE":
             if state is None:
-                raise ValueError("State must be provided for RIS_PEER_STATE messages")
+                raise ValueError("State must be provided for PEER_STATE messages")
             
             if state.lower() == 'connected':
                 # Peer Up message

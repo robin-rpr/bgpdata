@@ -77,39 +77,39 @@ core:
         - name: amsix.ams.routeviews.org
           collectors: "amsix.ams:293,amsix.ams:1103,amsix.ams:1140,amsix.ams:3320,amsix.ams:6204,amsix.ams:6777,amsix.ams:20253,amsix.ams:28283,amsix.ams:34177,amsix.ams:37271,amsix.ams:39120,amsix.ams:49544,amsix.ams:56987,amsix.ams:213241,amsix.ams:271253,amsix.ams:328832,amsix.ams:398465"
         - name: route-views.amsix.routeviews.org
-          collectors: "amsix:1103,amsix:3214,amsix:3399,amsix:6762,amsix:6830,amsix:8888,amsix:9002,amsix:12779,amsix:12859,amsix:16509,amsix:16552,amsix:30844,amsix:38880,amsix:39591,amsix:42541,amsix:44324,amsix:47957,amsix:50763,amsix:51019,amsix:51088,amsix:56662,amsix:58511,amsix:60144,amsix:60150,amsix:61955,amsix:199524,amsix:200242,amsix:208753,amsix:211398,amsix:213151,amsix:216311,amsix:267613"
+          collectors: "route-views.amsix:1103,route-views.amsix:3214,route-views.amsix:3399,route-views.amsix:6762,route-views.amsix:6830,route-views.amsix:8888,route-views.amsix:9002,route-views.amsix:12779,route-views.amsix:12859,route-views.amsix:16509,route-views.amsix:16552,route-views.amsix:30844,route-views.amsix:38880,route-views.amsix:39591,route-views.amsix:42541,route-views.amsix:44324,route-views.amsix:47957,route-views.amsix:50763,route-views.amsix:51019,route-views.amsix:51088,route-views.amsix:56662,route-views.amsix:58511,route-views.amsix:60144,route-views.amsix:60150,route-views.amsix:61955,route-views.amsix:199524,route-views.amsix:200242,route-views.amsix:208753,route-views.amsix:211398,route-views.amsix:213151,route-views.amsix:216311,route-views.amsix:267613"
         - name: route-views.bknix.routeviews.org
-          collectors: "bknix:59238,bknix:63529"
+          collectors: "route-views.bknix:59238,route-views.bknix:63529"
         - name: route-views.chicago.routeviews.org
-          collectors: "chicago:293,chicago:852,chicago:3257,chicago:8220,chicago:14630,chicago:16509,chicago:16552,chicago:17350,chicago:19151,chicago:19653,chicago:20253,chicago:24115,chicago:32709,chicago:49544,chicago:53828,chicago:199524,chicago:398465"
+          collectors: "route-views.chicago:293,route-views.chicago:852,route-views.chicago:3257,route-views.chicago:8220,route-views.chicago:14630,route-views.chicago:16509,route-views.chicago:16552,route-views.chicago:17350,route-views.chicago:19151,route-views.chicago:19653,route-views.chicago:20253,route-views.chicago:24115,route-views.chicago:32709,route-views.chicago:49544,route-views.chicago:53828,route-views.chicago:199524,route-views.chicago:398465"
         - name: route-views.chile.routeviews.org
-          collectors: "chile:27678,chile:27986"
+          collectors: "route-views.chile:27678,route-views.chile:27986"
         - name: cix.atl.routeviews.org
           collectors: "cix.atl:13335,cix.atl:16509,cix.atl:20253,cix.atl:20940,cix.atl:63221"
         - name: decix.jhb.routeviews.org
           collectors: "decix.jhb:16509,decix.jhb:38137,decix.jhb:38194,decix.jhb:199524"
         - name: route-views.eqix.routeviews.org
-          collectors: "eqix:293,eqix:2914,eqix:3257,eqix:3320,eqix:6057,eqix:6079,eqix:6762,eqix:6830,eqix:6939,eqix:8220,eqix:8781,eqix:11039,eqix:16509,eqix:16552,eqix:17350,eqix:19151,eqix:20253,eqix:32098,eqix:37468,eqix:37721,eqix:40934,eqix:41095,eqix:49544,eqix:57695,eqix:199524,eqix:398465"
+          collectors: "route-views.eqix:293,route-views.eqix:2914,route-views.eqix:3257,route-views.eqix:3320,route-views.eqix:6057,route-views.eqix:6079,route-views.eqix:6762,route-views.eqix:6830,route-views.eqix:6939,route-views.eqix:8220,route-views.eqix:8781,route-views.eqix:11039,route-views.eqix:16509,route-views.eqix:16552,route-views.eqix:17350,route-views.eqix:19151,route-views.eqix:20253,route-views.eqix:32098,route-views.eqix:37468,route-views.eqix:37721,route-views.eqix:40934,route-views.eqix:41095,route-views.eqix:49544,route-views.eqix:57695,route-views.eqix:199524,route-views.eqix:398465"
         - name: route-views.flix.routeviews.org
-          collectors: "flix:1031,flix:6939,flix:7195,flix:15280,flix:16509,flix:16552,flix:19151,flix:20253,flix:28283,flix:52320,flix:52468,flix:63221,flix:263237,flix:264409"
+          collectors: "route-views.flix:1031,route-views.flix:6939,route-views.flix:7195,route-views.flix:15280,route-views.flix:16509,route-views.flix:16552,route-views.flix:19151,route-views.flix:20253,route-views.flix:28283,route-views.flix:52320,route-views.flix:52468,route-views.flix:63221,route-views.flix:263237,route-views.flix:264409"
         - name: route-views.fortaleza.routeviews.org
-          collectors: "fortaleza:1031,fortaleza:20253,fortaleza:26162,fortaleza:28624,fortaleza:52320,fortaleza:199524,fortaleza:262462,fortaleza:263945,fortaleza:264409,fortaleza:264479"
+          collectors: "route-views.fortaleza:1031,route-views.fortaleza:20253,route-views.fortaleza:26162,route-views.fortaleza:28624,route-views.fortaleza:52320,route-views.fortaleza:199524,route-views.fortaleza:262462,route-views.fortaleza:263945,route-views.fortaleza:264409,route-views.fortaleza:264479"
         - name: route-views.gorex.routeviews.org
-          collectors: "gorex:16509,gorex:40300,gorex:65534"
+          collectors: "route-views.gorex:16509,route-views.gorex:40300,route-views.gorex:65534"
         - name: route-views.isc.routeviews.org
-          collectors: "isc:3320,isc:6762,isc:6939,isc:7575,isc:16509,isc:19151,isc:49544,isc:199524"
+          collectors: "route-views.isc:3320,route-views.isc:6762,route-views.isc:6939,route-views.isc:7575,route-views.isc:16509,route-views.isc:19151,route-views.isc:49544,route-views.isc:199524"
         - name: route-views.kixp.routeviews.org
-          collectors: "kixp:6939,kixp:16509,kixp:37271,kixp:37704,kixp:63293,kixp:328475,kixp:328977"
+          collectors: "route-views.kixp:6939,route-views.kixp:16509,route-views.kixp:37271,route-views.kixp:37704,route-views.kixp:63293,route-views.kixp:328475,route-views.kixp:328977"
         - name: route-views.linx.routeviews.org
-          collectors: "linx:1031,linx:2914,linx:3170,linx:3257,linx:3491,linx:5413,linx:5511,linx:6424,linx:6453,linx:6667,linx:6762,linx:6830,linx:6939,linx:8455,linx:8714,linx:9002,linx:13030,linx:13237,linx:14537,linx:16509,linx:16552,linx:31500,linx:34288,linx:37271,linx:38182,linx:38880,linx:39122,linx:41811,linx:47957,linx:48070,linx:49544,linx:58511,linx:59605,linx:267613,linx:398465"
+          collectors: "route-views.linx:1031,route-views.linx:2914,route-views.linx:3170,route-views.linx:3257,route-views.linx:3491,route-views.linx:5413,route-views.linx:5511,route-views.linx:6424,route-views.linx:6453,route-views.linx:6667,route-views.linx:6762,route-views.linx:6830,route-views.linx:6939,route-views.linx:8455,route-views.linx:8714,route-views.linx:9002,route-views.linx:13030,route-views.linx:13237,route-views.linx:14537,route-views.linx:16509,route-views.linx:16552,route-views.linx:31500,route-views.linx:34288,route-views.linx:37271,route-views.linx:38182,route-views.linx:38880,route-views.linx:39122,route-views.linx:41811,route-views.linx:47957,route-views.linx:48070,route-views.linx:49544,route-views.linx:58511,route-views.linx:59605,route-views.linx:267613,route-views.linx:398465"
         - name: route-views.napafrica.routeviews.org
-          collectors: "napafrica:3491,napafrica:16509,napafrica:16552,napafrica:32653,napafrica:37271,napafrica:37468,napafrica:49544,napafrica:199524,napafrica:328137,napafrica:328206,napafrica:328266,napafrica:328320,napafrica:328512,napafrica:328964,napafrica:329035"
+          collectors: "route-views.napafrica:3491,route-views.napafrica:16509,route-views.napafrica:16552,route-views.napafrica:32653,route-views.napafrica:37271,route-views.napafrica:37468,route-views.napafrica:49544,route-views.napafrica:199524,route-views.napafrica:328137,route-views.napafrica:328206,route-views.napafrica:328266,route-views.napafrica:328320,route-views.napafrica:328512,route-views.napafrica:328964,route-views.napafrica:329035"
         - name: route-views.ny.routeviews.org
-          collectors: "ny:11399,ny:13335,ny:20253,ny:20940,ny:28213,ny:32934,ny:49544,ny:63034,ny:64289,ny:398465"
+          collectors: "route-views.ny:11399,route-views.ny:13335,route-views.ny:20253,route-views.ny:20940,route-views.ny:28213,route-views.ny:32934,route-views.ny:49544,route-views.ny:63034,route-views.ny:64289,route-views.ny:398465"
         - name: route-views.perth.routeviews.org
-          collectors: "perth:7594,perth:7606,perth:17766,perth:49544,perth:58511,perth:136557,perth:140627,perth:199524"
+          collectors: "route-views.perth:7594,route-views.perth:7606,route-views.perth:17766,route-views.perth:49544,route-views.perth:58511,route-views.perth:136557,route-views.perth:140627,route-views.perth:199524"
         - name: route-views.rio.routeviews.org
-          collectors: "rio:999,rio:1031,rio:6057,rio:20253,rio:26162,rio:52320,rio:52468,rio:199524,rio:264409,rio:264479,rio:267613"
+          collectors: "route-views.rio:999,route-views.rio:1031,route-views.rio:6057,route-views.rio:20253,route-views.rio:26162,route-views.rio:52320,route-views.rio:52468,route-views.rio:199524,route-views.rio:264409,route-views.rio:264479,route-views.rio:267613"
         - name: route-views2.saopaulo.routeviews.org
           collectors: "route-views2.saopaulo:1031,route-views2.saopaulo:7195,route-views2.saopaulo:13786,route-views2.saopaulo:16552,route-views2.saopaulo:26162,route-views2.saopaulo:28329,route-views2.saopaulo:37468,route-views2.saopaulo:49544,route-views2.saopaulo:52468,route-views2.saopaulo:52863,route-views2.saopaulo:52873,route-views2.saopaulo:60503,route-views2.saopaulo:61832,route-views2.saopaulo:199524,route-views2.saopaulo:262791,route-views2.saopaulo:263009,route-views2.saopaulo:263237,route-views2.saopaulo:263541,route-views2.saopaulo:264409,route-views2.saopaulo:264479,route-views2.saopaulo:268976,route-views2.saopaulo:271253"
         - name: route-views3.routeviews.org
@@ -122,22 +122,20 @@ core:
           collectors: "route-views6:209,route-views6:701,route-views6:1403,route-views6:2497,route-views6:2914,route-views6:3130,route-views6:3257,route-views6:6939,route-views6:7018,route-views6:7660,route-views6:18106,route-views6:20130,route-views6:20912,route-views6:22652,route-views6:23673,route-views6:37100,route-views6:49788,route-views6:57463,route-views6:57866,route-views6:58511,route-views6:140731,route-views6:209306"
         - name: route-views7.routeviews.org
           collectors: "route-views7:260,route-views7:924,route-views7:4641,route-views7:5580,route-views7:8582,route-views7:16260,route-views7:30371,route-views7:37989,route-views7:40864,route-views7:44620,route-views7:44901,route-views7:48297,route-views7:51999,route-views7:57344,route-views7:132213,route-views7:150369,route-views7:199310,route-views7:206271,route-views7:328977,route-views7:401021"
-        - name: route-views.routeviews.org
-          collectors: "route-views:101,route-views:3333,route-views:4901,route-views:20080,route-views:57866"
         - name: route-views.sfmix.routeviews.org
-          collectors: "sfmix:16509,sfmix:20253,sfmix:34927,sfmix:35008,sfmix:49544,sfmix:63055,sfmix:64289,sfmix:397131"
+          collectors: "route-views.sfmix:16509,route-views.sfmix:20253,route-views.sfmix:34927,route-views.sfmix:35008,route-views.sfmix:49544,route-views.sfmix:63055,route-views.sfmix:64289,route-views.sfmix:397131"
         - name: route-views.sg.routeviews.org
-          collectors: "sg:3491,sg:4637,sg:6762,sg:7713,sg:8220,sg:9002,sg:9902,sg:16509,sg:16552,sg:17660,sg:18106,sg:24115,sg:24482,sg:24516,sg:37468,sg:38182,sg:38880,sg:49544,sg:58511,sg:58952,sg:59318,sg:63927,sg:132337,sg:136106,sg:136557,sg:151326,sg:199524"
+          collectors: "route-views.sg:3491,route-views.sg:4637,route-views.sg:6762,route-views.sg:7713,route-views.sg:8220,route-views.sg:9002,route-views.sg:9902,route-views.sg:16509,route-views.sg:16552,route-views.sg:17660,route-views.sg:18106,route-views.sg:24115,route-views.sg:24482,route-views.sg:24516,route-views.sg:37468,route-views.sg:38182,route-views.sg:38880,route-views.sg:49544,route-views.sg:58511,route-views.sg:58952,route-views.sg:59318,route-views.sg:63927,route-views.sg:132337,route-views.sg:136106,route-views.sg:136557,route-views.sg:151326,route-views.sg:199524"
         - name: route-views.soxrs.routeviews.org
-          collectors: "soxrs:13004,soxrs:199524"
+          collectors: "route-views.soxrs:13004,route-views.soxrs:199524"
         - name: route-views.sydney.routeviews.org
-          collectors: "sydney:3491,sydney:4826,sydney:7575,sydney:7594,sydney:8888,sydney:9266,sydney:16552,sydney:24115,sydney:24516,sydney:58511,sydney:63956,sydney:132847,sydney:135895,sydney:148968,sydney:199524,sydney:398465"
+          collectors: "route-views.sydney:3491,route-views.sydney:4826,route-views.sydney:7575,route-views.sydney:7594,route-views.sydney:8888,route-views.sydney:9266,route-views.sydney:16552,route-views.sydney:24115,route-views.sydney:24516,route-views.sydney:58511,route-views.sydney:63956,route-views.sydney:132847,route-views.sydney:135895,route-views.sydney:148968,route-views.sydney:199524,route-views.sydney:398465"
         - name: route-views.telxatl.routeviews.org
-          collectors: "telxatl:4181,telxatl:6082,telxatl:6939,telxatl:16509,telxatl:19151,telxatl:20253,telxatl:32299,telxatl:53828"
+          collectors: "route-views.telxatl:4181,route-views.telxatl:6082,route-views.telxatl:6939,route-views.telxatl:16509,route-views.telxatl:19151,route-views.telxatl:20253,route-views.telxatl:32299,route-views.telxatl:53828"
         - name: route-views.uaeix.routeviews.org
-          collectors: "uaeix:16509,uaeix:42473,uaeix:49544,uaeix:60924,uaeix:61374,uaeix:199524"
+          collectors: "route-views.uaeix:16509,route-views.uaeix:42473,route-views.uaeix:49544,route-views.uaeix:60924,route-views.uaeix:61374,route-views.uaeix:199524"
         - name: route-views.wide.routeviews.org
-          collectors: "wide:2497,wide:2500,wide:2516,wide:7500"
+          collectors: "route-views.wide:2497,route-views.wide:2500,route-views.wide:2516,route-views.wide:7500"
   database:
     password: "your-super-secret-password"
     resources:
