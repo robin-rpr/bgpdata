@@ -17,10 +17,14 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 """
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
+from protocols.bmp import BMPv3
 from bs4 import BeautifulSoup
 import queue as queueio
-from config import *
-from tasks import *
+from services.collector.config import *
+from services.collector.tasks.kafka import kafka_task
+from services.collector.tasks.rib import rib_task
+from services.collector.tasks.sender import sender_task
+from services.collector.tasks.logging import logging_task
 import threading
 import rocksdbpy
 import requests
@@ -35,9 +39,12 @@ logger = logging.getLogger(__name__)
 logger.setLevel(getattr(logging, log_level, logging.INFO))
 
 # Collectors
-routeviews_collectors = [tuple(c.split(':')) for c in os.getenv('ROUTEVIEWS_COLLECTORS', '').split(',') if c.strip()]
-ris_collectors = [c.strip() for c in os.getenv('RIS_COLLECTORS', '').split(',') if c]
-openbmp_collectors = [tuple(c.split(':')) for c in os.getenv('OPENBMP_COLLECTORS', '').split(',') if c.strip()]
+routeviews_collectors = [tuple(collector.strip().split(':')) for collector in (
+    os.getenv('ROUTEVIEWS_COLLECTORS') or '').split(',') if collector]
+ris_collectors = [collector.strip() for collector in (
+    os.getenv('RIS_COLLECTORS') or '').split(',') if collector]
+openbmp_collectors = [tuple(collector.split(':')) for collector in (
+    os.getenv('OPENBMP_COLLECTORS') or '').split(',') if collector]
 
 # RocksDB database
 db = rocksdbpy.open_default(".rocksdb")
@@ -49,9 +56,6 @@ executor = ThreadPoolExecutor(max_workers=sum([
     len(openbmp_collectors),
     1
 ]))
-
-# Asyncio loop
-loop = asyncio.get_running_loop()
 
 # Message queue
 queue = queueio.Queue(maxsize=10000000)
@@ -79,32 +83,43 @@ def on_start():
     Callback function to handle the start of the collector.
     """
 
-    # Set started flag
-    db.put(b'started', b'\x01')
+    messages = []
 
     # Loop through all unique hosts
     for host in list(set([f"{host}" for host, _ in routeviews_collectors])) + [f"{host}.ripe.net" for host in ris_collectors]:
-        # Initialize timestamp for this host if not already set
-        if db.get(f'timestamps_{host}'.encode('utf-8')) is None:
-            db.set(f'timestamps_{host}'.encode('utf-8'), struct.pack('>d', 0.0))
+        # Send ROUTER INIT message
+        messages.extend(BMPv3.construct(
+            collector=host,
+            local_ip='127.0.0.1',
+            local_port=179,
+            bgp_id='192.0.2.1',
+            my_as=64512,
+            msg_type='ROUTER_INIT',
+            hold_time=180,
+            optional_params=b'' # No optional parameters
+        ))
 
-        # Send peer up message
-        message = BMPv3.construct(
-            host,
-            '127.0.0.1',
-            0,
-            time.time(),
-            'PEER_STATE',
-            None,
-            None,
-            None,
-            None,
-            None,
-            'connected',
-            None
-        )
+        # Send PEER UP message
+        messages.extend(BMPv3.construct(
+            collector=host,
+            peer_ip='127.0.0.1',
+            peer_asn=64513, # Private ASN
+            timestamp=time.time(),
+            msg_type='PEER_STATE',
+            path=[],
+            origin='INCOMPLETE',
+            community=[],
+            announcements=[],
+            withdrawals=[],
+            state='CONNECTED',
+            my_as=64512, # Private ASN
+            hold_time=180, # 3 minutes
+            bgp_id='192.0.2.1', # BGP Identifier (Using a unique TEST-NET-1 IP)
+            optional_params=b'' # No optional parameters
+        ))
 
-        # Add the message to the queue
+    # Add the messages to the queue
+    for message in messages:
         queue.put((message, 0, None, -1))
 
 def on_assign(consumer, partitions, db):
@@ -201,6 +216,9 @@ async def main():
     try:
         # Start
         on_start()
+
+        # Asyncio loop
+        loop = asyncio.get_running_loop()
 
         # HACK: For Route Views, we need to manually fetch the latest RIBs
         if len(routeviews_collectors) > 0:

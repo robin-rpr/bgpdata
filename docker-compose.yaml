@@ -80,11 +80,11 @@ services:
         volumes:
             - .:/app
         entrypoint: >
-            /bin/sh -c "alembic upgrade head && gunicorn --bind 0.0.0.0:8080 --workers 4 --worker-class uvicorn.workers.UvicornWorker --reload --log-level info --access-logfile - --error-logfile - 'app:asgi_app'"
+            /bin/sh -c "python manage.py migrate && python manage.py run --host=0.0.0.0 --port=8080"
 
-    core-collector:
+    core-proxy:
         build: .
-        container_name: core-collector
+        container_name: core-proxy
         restart: unless-stopped
         environment:
             POSTGRESQL_HOST: core-db
@@ -92,60 +92,20 @@ services:
             POSTGRESQL_DB: default
             POSTGRESQL_USER: core
             POSTGRESQL_PASSWORD: core
-            # List of OpenBMP collectors
-            # https://github.com/OpenBMP/obmp-collector
-            OPENBMP_COLLECTORS: openbmp-collector:5000
-            # List of Route Views collectors
-            # https://www.routeviews.org/
-            ROUTEVIEWS_COLLECTORS: |
-               route-views.amsix:1103,
-               route-views.amsix:3214,
-               route-views.amsix:3399,
-               route-views.amsix:6762,
-               route-views.amsix:6830,
-               route-views.amsix:8888,
-               route-views.amsix:9002,
-               route-views.amsix:12779,
-               route-views.amsix:12859,
-               route-views.amsix:16509,
-               route-views.amsix:16552,
-               route-views.amsix:30844,
-               route-views.amsix:38880,
-               route-views.amsix:39591,
-               route-views.amsix:42541,
-               route-views.amsix:44324,
-               route-views.amsix:47957,
-               route-views.amsix:50763,
-               route-views.amsix:51019,
-               route-views.amsix:51088,
-               route-views.amsix:56662,
-               route-views.amsix:58511,
-               route-views.amsix:60144,
-               route-views.amsix:60150,
-               route-views.amsix:61955,
-               route-views.amsix:199524,
-               route-views.amsix:200242,
-               route-views.amsix:208753,
-               route-views.amsix:211398,
-               route-views.amsix:213151,
-               route-views.amsix:216311,
-               route-views.amsix:267613
-            # List of RIPE Route Collectors
-            # https://ris.ripe.net
-            #RIS_USERNAME: public
-            #RIS_PASSWORD: public
-            #RIS_COLLECTORS: |
-            #    rrc00,
-            #    rrc01
-            LOG_LEVEL: DEBUG
+            PROXY_SOURCE: routeviews.org
+            PROXY_ROUTER: route-views.amsix
+            PROXY_TARGET: openbmp-collector:5000
         depends_on:
+            core-db:
+                condition: service_healthy
             openbmp-collector:
                 condition: service_healthy
         working_dir: /app
         volumes:
             - .:/app
+            - core_rd_data:/var/lib/rocksdb
         entrypoint: >
-            python app.py --service collector
+            python manage.py proxy
 
     #core-aggregator:
     #    build: .
@@ -389,6 +349,7 @@ services:
 
 # Define volumes
 volumes:
+    core_rd_data:
     core_pg_data:
     obmp_cf_data:
     obmp_pg_data:

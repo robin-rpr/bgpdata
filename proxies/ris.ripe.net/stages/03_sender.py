@@ -1,6 +1,4 @@
 import queue as queueio
-from config import *
-from tasks import *
 import select
 import socket
 import time

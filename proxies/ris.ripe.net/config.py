@@ -23,8 +23,8 @@ ris_consumer_conf = {
     'enable.auto.commit': False,
     'security.protocol': 'SASL_SSL',
     'sasl.mechanism': 'PLAIN',
-    'sasl.username': os.getenv('RIS_USERNAME'),
-    'sasl.password': os.getenv('RIS_PASSWORD'),
+    'sasl.username': 'public',
+    'sasl.password': 'public',
     'fetch.max.bytes': 50 * 1024 * 1024, # 50 MB
     'session.timeout.ms': 30000,  # For stable group membership
 }

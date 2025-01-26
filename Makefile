@@ -31,3 +31,4 @@ lint: ## Run linters and static analysis
 
 clean: ## Remove all files ignored by git
 	git clean -fdX
+	

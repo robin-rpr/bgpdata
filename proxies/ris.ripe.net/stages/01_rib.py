@@ -1,6 +1,4 @@
 from protocols.bmp import BMPv3
-from config import *
-from tasks import *
 import bgpkit
 import struct
 import time
@@ -62,33 +60,32 @@ def rib_task(queue, db, status, collectors, provider, events, logger):
 
                         # Construct the BMP message
                         messages = BMPv3.construct(
-                            host,
-                            elem['peer_ip'],
-                            elem['peer_asn'],
-                            elem['timestamp'],
-                            "UPDATE",
-                            [
+                            collector=host,
+                            peer_ip=elem['peer_ip'],
+                            peer_asn=elem['peer_asn'],
+                            timestamp=elem['timestamp'],
+                            msg_type="UPDATE",
+                            path=[
                                 [int(asn) for asn in part[1:-1].split(',')] if part.startswith('{') and part.endswith('}')
                                 else int(part)
                                 for part in elem['as_path'].split()
                             ],
-                            elem['origin'],
-                            [
+                            origin=elem['origin'],
+                            community=[
                                 # Only include compliant communities with 2 or 3 parts that are all valid integers
                                 [int(part) for part in comm.split(
                                     ":")[1:] if part.isdigit()]
                                 for comm in (elem.get("communities") or [])
                                 if len(comm.split(":")) in {2, 3} and all(p.isdigit() for p in comm.split(":")[1:])
                             ],
-                            [
+                            announcements=[
                                 {
                                     "next_hop": elem["next_hop"],
                                     "prefixes": [elem["prefix"]]
                                 }
                             ],
-                            [],
-                            None,
-                            0
+                            withdrawals=[],
+                            med=0
                         )
 
                         # Update the bytes received counter

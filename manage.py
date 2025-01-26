@@ -1,54 +1,49 @@
 #!/usr/bin/env python
 import click
+import sys
+import os
+import asyncio
 from flask.cli import FlaskGroup
 from alembic.config import Config
 from alembic import command
 
-# Import your Flask app or the factory function
-# If you use an app factory, import it:
-from app import main as app_main
+# Ensure the root directory is in sys.path
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-# Import your services
-from services.collector.main import main as collector_main
-from services.aggregator.main import main as aggregator_main
+def create_my_app():
+    """FlaskGroup needs this function to create the app."""
+    from app import create_app
+    return create_app()
 
-@click.group(cls=FlaskGroup)
+@click.group(cls=FlaskGroup, create_app=create_my_app)
 def cli():
-    """
-    This is our main entry point for commands.
-    """
+    """BGPDATA Management Script."""
     pass
-
-@cli.command("runserver")
-def runserver():
-    """
-    Starts the Flask development server.
-    """
-    app = app_main()
-    app.run(debug=True)
 
 @cli.command("collector")
 def collector():
     """
     Run the data collector service.
     """
+    from services.collector.main import main as collector_main
     click.echo("Starting collector service...")
-    collector_main()
+    asyncio.run(collector_main())
 
 @cli.command("aggregator")
 def aggregator():
     """
     Run the data aggregator service.
     """
+    from services.aggregator.main import main as aggregator_main
     click.echo("Starting aggregator service...")
-    aggregator_main()
+    asyncio.run(aggregator_main())
 
 @cli.command("migrate")
 def migrate():
     """
-    Runs alembic migrations (equivalent to `alembic upgrade head`).
+    Runs database migrations.
     """
-    click.echo("Running migrations with Alembic...")
+    click.echo("Running migrations...")
     alembic_cfg = Config("alembic.ini")
     command.upgrade(alembic_cfg, "head")
 

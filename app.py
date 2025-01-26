@@ -48,13 +48,9 @@ ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 # Cache for 1 day (86400 seconds)
 CACHE_MAX_AGE = int(os.getenv('CACHE_MAX_AGE', '86400'))
 
-def main():
-
+def create_app():
     app = Flask(__name__)
     app.secret_key = SECRET_KEY
-
-    # Create ASGI Application
-    asgi_app = WsgiToAsgi(app)
 
     # Set secure session cookies
     app.config['SESSION_COOKIE_SECURE'] = ENVIRONMENT == 'production'
@@ -433,5 +429,5 @@ def main():
     return app
 
 if __name__ == '__main__':
-    app = main()
+    app = create_app()
     app.run()

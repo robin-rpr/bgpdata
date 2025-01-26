@@ -2,8 +2,6 @@ from confluent_kafka import KafkaError, Consumer, TopicPartition, KafkaException
 from datetime import datetime, timedelta
 from protocols.bmp import BMPv3
 from io import BytesIO
-from config import *
-from tasks import *
 import fastavro
 import struct
 import time
@@ -210,18 +208,18 @@ def kafka_task(configuration, collectors, topics, queue, db, status, batch_size,
                     marshal = json.loads(parsed['ris_live'])
 
                     messages.extend(BMPv3.construct(
-                        host,
-                        marshal['peer'],
-                        int(marshal['peer_asn']), # Cast to int from string
-                        marshal['timestamp'],
-                        'PEER_STATE' if marshal['type'] == 'RIS_PEER_STATE' else marshal['type'],
-                        marshal.get('path', []),
-                        marshal.get('origin', 'INCOMPLETE'),
-                        marshal.get('community', []),
-                        marshal.get('announcements', []),
-                        marshal.get('withdrawals', []),
-                        marshal.get('state', None),
-                        marshal.get('med', None)
+                        collector=host,
+                        peer_ip=marshal['peer'],
+                        peer_asn=int(marshal['peer_asn']), # Cast to int from string
+                        timestamp=marshal['timestamp'],
+                        msg_type='PEER_STATE' if marshal['type'] == 'RIS_PEER_STATE' else marshal['type'],
+                        path=marshal.get('path', []),
+                        origin=marshal.get('origin', 'INCOMPLETE'),
+                        community=marshal.get('community', []),
+                        announcements=marshal.get('announcements', []),
+                        withdrawals=marshal.get('withdrawals', []),
+                        state=marshal.get('state', None),
+                        med=marshal.get('med', None)
                     ))
 
             for message in messages:

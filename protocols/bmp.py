@@ -30,25 +30,6 @@ class BMPv3:
     The BMPv3 class provides methods to build various BGP and BMP messages, including
     KEEPALIVE, NOTIFICATION, UPDATE, and Peer Up/Down Notification messages. It also includes
     utility functions to encode prefixes and path attributes as per BGP specifications.
-
-    Attributes:
-        None
-
-    Methods:
-        build_bgp_keepalive_message() -> bytes:
-            Build the BGP KEEPALIVE message in bytes.
-        build_bgp_notification_message(notification_message: dict) -> bytes:
-            Build the BGP NOTIFICATION message in bytes.
-        build_bgp_update_message(update_message: dict) -> bytes:
-            Build the BGP UPDATE message in bytes.
-        build_bmp_per_peer_header(peer_ip: str, peer_asn: int, timestamp: float, collector: str) -> bytes:
-            Build the BMP Per-Peer Header.
-        construct_bmp_peer_up_message(peer_ip: str, peer_asn: int, timestamp: float) -> bytes:
-            Construct a BMP Peer Up Notification message.
-        construct_bmp_peer_down_message(peer_ip: str, peer_asn: int, timestamp: float, notification_message: dict) -> bytes:
-            Construct a BMP Peer Down Notification message.
-        encode_prefix(prefix: str) -> bytes:
-            Encode a prefix into bytes as per BGP specification.
     """
 
     # BMP header lengths (not counting the version in the common hdr)
@@ -70,12 +51,14 @@ class BMPv3:
     BGP_AS_TRANS = 23456          # BGP ASN when AS exceeds 16bits
 
     @staticmethod
-    def construct(collector: str, peer_ip: str, peer_asn: int, timestamp: float, msg_type: str, path=[], origin='INCOMPLETE', community=[], announcements=[], withdrawals=[], state=None, med=None) -> List[bytes]:
+    def construct(collector: str, local_ip='', local_port=0, peer_ip='', peer_asn='', timestamp=0.0, msg_type='UPDATE', path=[], origin='INCOMPLETE', community=[], announcements=[], withdrawals=[], state=None, med=None, my_as=None, hold_time=None, bgp_id=None, optional_params=None) -> List[bytes]:
         """
         Construct BMPv3 (RFC7854) messages.
 
         Args:
             collector (str): The collector name
+            local_ip (str): The local IP address
+            local_port (int): The local port
             peer_ip (str): The peer IP address
             peer_asn (int): The peer AS number
             timestamp (float): Unix timestamp
@@ -87,6 +70,10 @@ class BMPv3:
             withdrawals (list): The withdrawal list
             state (str): The peer state
             med (int): The MED value
+            my_as (int): Your AS number.
+            hold_time (int): Hold time.
+            bgp_id (str): Your BGP Identifier.
+            optional_params (bytes): Optional parameters.
 
         Returns:
             List[bytes]: A list of BMP Route Monitoring, Keepalive, or Peer State messages in bytes
@@ -210,21 +197,37 @@ class BMPv3:
             )
             bmp_messages.append(bmp_message)
 
+        elif msg_type.upper() == "ROUTER_INIT":
+            bmp_message = BMPv3.construct_bmp_router_init_message(
+                local_ip=local_ip,
+                local_port=local_port,
+                my_as=my_as,
+                bgp_id=bgp_id,
+                collector=collector,
+                hold_time=hold_time,
+                optional_params=optional_params
+            )
+            bmp_messages.append(bmp_message)
+
         # Handle PEER_STATE messages
         elif msg_type.upper() == "PEER_STATE":
             if state is None:
                 raise ValueError("State must be provided for PEER_STATE messages")
             
-            if state.lower() == 'connected':
+            if state.upper() == 'CONNECTED':
                 # Peer Up message
                 bmp_message = BMPv3.construct_bmp_peer_up_message(
                     peer_ip=peer_ip,
                     peer_asn=peer_asn,
                     timestamp=timestamp,
-                    collector=collector
+                    collector=collector,
+                    my_as=my_as,
+                    hold_time=hold_time,
+                    bgp_id=bgp_id,
+                    optional_params=optional_params
                 )
                 bmp_messages.append(bmp_message)
-            elif state.lower() == 'down':
+            elif state.upper() == 'DOWN':
                 # Peer Down message
                 bmp_message = BMPv3.construct_bmp_peer_down_message(
                     peer_ip=peer_ip,
@@ -297,42 +300,86 @@ class BMPv3:
         bmp_message = bmp_common_header + per_peer_header + bgp_keepalive
 
         return bmp_message
+    
+    @staticmethod
+    def construct_bmp_router_init_message(local_ip, local_port, my_as, bgp_id, collector, hold_time=180, optional_params=b'') -> bytes:
+        """
+        Construct a BMP Router Init Notification message.
+
+        Args:
+            local_ip (str): The local IP address of the OpenBMP server.
+            local_port (int): The local port (typically 179 for BGP).
+            my_as (int): Your AS number.
+            bgp_id (str): Your BGP Identifier.
+            collector (str): The collector name.
+            optional_params (bytes): Optional parameters for BGP OPEN.
+
+        Returns:
+            bytes: The BMP message in bytes.
+        """
+        bmp_msg_type = 4  # Router Init Notification
+        per_peer_header = BMPv3.build_bmp_per_peer_header(local_ip, my_as, timestamp=0, collector=collector)
+        
+        # Construct BGP OPEN message for Router Init
+        sent_open_message = BMPv3.build_bgp_open_message(my_as, hold_time=hold_time, bgp_id=bgp_id, optional_params=optional_params)
+        
+        # For Router Init, there might be no Received OPEN message
+        router_init_msg = (
+            socket.inet_pton(socket.AF_INET6, '::ffff:' + local_ip) +  # Local Address (IPv6 mapped IPv4)
+            struct.pack('!H', local_port) +                           # Local Port
+            b'\x00' * 16 +                                            # Placeholder for Remote Address (IPv6 mapped IPv4)
+            struct.pack('!H', 0) +                                    # Remote Port (0 for Router Init)
+            sent_open_message                                         # Sent OPEN
+        )
+        
+        total_length = BMPv3.BMP_HDRv3_LEN + len(per_peer_header) + len(router_init_msg)
+        
+        bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
+        
+        # Build the full BMP message
+        bmp_message = bmp_common_header + per_peer_header + router_init_msg
+        
+        return bmp_message
 
     @staticmethod
-    def construct_bmp_peer_up_message(peer_ip, peer_asn, timestamp, collector):
+    def construct_bmp_peer_up_message(peer_ip, peer_asn, timestamp, collector, my_as, hold_time, bgp_id, optional_params=b''):
         """
-        Construct a BMP Peer Up Notification message.
-
+        Construct a BMP Peer Up Notification message with BGP OPEN messages.
+        
         Args:
             peer_ip (str): The peer IP address.
             peer_asn (int): The peer AS number.
             timestamp (float): The timestamp.
             collector (str): The collector name.
-
+            my_as (int): Your AS number.
+            hold_time (int): Hold time in seconds.
+            bgp_id (str): Your BGP Identifier.
+            optional_params (bytes): Optional parameters for BGP OPEN.
+        
         Returns:
             bytes: The BMP message in bytes.
         """
-        # For simplicity, we will not include all optional fields
         bmp_msg_type = 3  # Peer Up Notification
         per_peer_header = BMPv3.build_bmp_per_peer_header(peer_ip, peer_asn, timestamp, collector)
-
-        # Local Address (16 bytes), Local Port (2 bytes), Remote Port (2 bytes), Sent OPEN Message, Received OPEN Message
-        # For simplicity, we'll use placeholders
-        local_address = b'\x00' * 16
-        local_port = struct.pack('!H', 0)
-        remote_port = struct.pack('!H', 179)
-        sent_open_message = b''
-        received_open_message = b''
-
-        peer_up_msg = local_address + local_port + remote_port + sent_open_message + received_open_message
-
+        
+        # Construct Sent and Received BGP OPEN messages
+        sent_open_message = BMPv3.build_bgp_open_message(my_as, hold_time, bgp_id, optional_params)
+        received_open_message = BMPv3.build_bgp_open_message(peer_asn, hold_time, bgp_id, optional_params)
+        
+        peer_up_msg = (
+            socket.inet_pton(socket.AF_INET6, '::') + # Local Address (IPv6)
+            struct.pack('!HH', 0, 179) +              # Local Port, Remote Port
+            sent_open_message +                       # Sent OPEN
+            received_open_message                     # Received OPEN
+        )
+        
         total_length = BMPv3.BMP_HDRv3_LEN + len(per_peer_header) + len(peer_up_msg)
-
+        
         bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
-
+        
         # Build the full BMP message
         bmp_message = bmp_common_header + per_peer_header + peer_up_msg
-
+        
         return bmp_message
 
     @staticmethod
@@ -368,6 +415,61 @@ class BMPv3:
         bmp_message = bmp_common_header + per_peer_header + reason + bgp_notification
 
         return bmp_message
+
+    @staticmethod
+    def build_bgp_open_message(my_as: int, hold_time: int, bgp_id: str, optional_params: bytes = b'') -> bytes:
+        """
+        Build a BGP OPEN message.
+        
+        Args:
+            my_as (int): Your AS number.
+            hold_time (int): Hold time in seconds.
+            bgp_id (str): Your BGP Identifier (IPv4 address as string).
+            optional_params (bytes): Optional parameters.
+        
+        Returns:
+            bytes: The BGP OPEN message in bytes.
+        """
+        version = 4  # BGP version
+        my_as_bytes = struct.pack('!H', my_as) if my_as < 65536 else struct.pack('!I', my_as)
+        hold_time_bytes = struct.pack('!H', hold_time)
+        bgp_id_bytes = socket.inet_aton(bgp_id)
+
+       # Build Multiprotocol Extensions Capability
+        multiprotocol_cap = BMPv3.encode_multiprotocol_extension(afi=1, safi=1)  # IPv4 Unicast
+
+        # Optionally, include Route Refresh Capability (uncomment if needed)
+        # route_refresh_cap = BMPv3.encode_route_refresh_capability()
+        capabilities = multiprotocol_cap  # + route_refresh_cap  # Add other capabilities if needed
+
+        # Encapsulate Capabilities within Parameter Type 2
+        capabilities_param = BMPv3.encode_capabilities_param(capabilities)
+
+        # Combine with any additional optional parameters
+        optional_params_full = capabilities_param + optional_params
+
+        # Calculate Optional Parameters Length
+        opt_param_length = len(optional_params_full)
+
+        # Build OPEN message body
+        open_msg_body = (
+            struct.pack('!B', version) +
+            my_as_bytes +
+            hold_time_bytes +
+            bgp_id_bytes +
+            struct.pack('!B', opt_param_length) +
+            optional_params_full
+        )
+
+        # BGP Marker and Header
+        marker = b'\xFF' * 16
+        length = 19 + len(open_msg_body)  # BGP Header (19 bytes) + Body
+        msg_type = 1  # OPEN
+
+        # Construct the full BGP OPEN message
+        bgp_open_message = marker + struct.pack('!HB', length, msg_type) + open_msg_body
+        return bgp_open_message
+
 
     @staticmethod
     def build_bgp_update_message(update_message):
@@ -467,6 +569,53 @@ class BMPv3:
 
         return bgp_message
 
+    @staticmethod
+    def encode_multiprotocol_extension(afi=1, safi=1):
+        """
+        Encode a Multiprotocol Extensions Capability TLV.
+
+        Args:
+            afi (int): Address Family Identifier (1 for IPv4, 2 for IPv6)
+            safi (int): Subsequent Address Family Identifier (1 for Unicast)
+
+        Returns:
+            bytes: The encoded Multiprotocol Extensions Capability
+        """
+        capability_code = 1  # Multiprotocol Extensions
+        capability_length = 4  # AFI (2) + SAFI (1) + Reserved (1)
+        reserved = 0  # Must be zero
+
+        return struct.pack('!BBHBB', capability_code, capability_length, afi, safi, reserved)
+
+    @staticmethod
+    def encode_route_refresh_capability() -> bytes:
+        """
+        Encode a Route Refresh Capability TLV.
+
+        Returns:
+            bytes: The encoded Route Refresh Capability.
+        """
+        capability_code = 2  # Route Refresh
+        capability_length = 0  # No value
+
+        return struct.pack('!BB', capability_code, capability_length)
+
+    @staticmethod
+    def encode_capabilities_param(capabilities: bytes) -> bytes:
+        """
+        Encode a Capabilities Advertisement Optional Parameter.
+
+        Args:
+            capabilities (bytes): The concatenated Capability TLVs.
+
+        Returns:
+            bytes: The encoded Capabilities Advertisement Optional Parameter.
+        """
+        parameter_type = 2  # Capabilities Advertisement
+        parameter_length = len(capabilities)  # Total length of all capabilities
+
+        return struct.pack('!BB', parameter_type, parameter_length) + capabilities
+    
     @staticmethod
     def encode_prefix(prefix):
         """

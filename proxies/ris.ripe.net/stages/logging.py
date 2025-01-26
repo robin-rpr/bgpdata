@@ -1,6 +1,4 @@
 from datetime import datetime, timedelta
-from config import *
-from tasks import *
 import struct
 import time
 
