@@ -1,14 +1,10 @@
 from confluent_kafka import KafkaError, Consumer, TopicPartition, KafkaException
 from datetime import datetime
-from protocols.bmp import BMPv3
-from io import BytesIO
-import fastavro
-import struct
 import socket
-import json
+import struct
 import time
 
-def kafka_task(target, router, queue, db, logger, events, memory):
+def kafka_task(openbmp, host, queue, db, logger, events, memory):
     """
     Task to poll a batch of messages from Kafka and add them to the queue.
     """
@@ -17,18 +13,15 @@ def kafka_task(target, router, queue, db, logger, events, memory):
     events['injection'].wait()
 
     # Broadcast the stage
-    memory['active_stage'] = "KAFKA_STREAM"
+    memory['source'] = "kafka"
 
     # Create Kafka Consumer
     consumer = Consumer({
-        'bootstrap.servers': 'node01.kafka-pub.ris.ripe.net:9094,node02.kafka-pub.ris.ripe.net:9094,node03.kafka-pub.ris.ripe.net:9094',
-        'group.id': f"bgpdata-{socket.gethostname()}",
+        'bootstrap.servers': 'stream.ris-kafka.com:9092',
+        'group.id': f'bgpdata-{socket.gethostname()}',
         'partition.assignment.strategy': 'roundrobin',
         'enable.auto.commit': False,
-        'security.protocol': 'SASL_SSL',
-        'sasl.mechanism': 'PLAIN',
-        'sasl.username': 'public',
-        'sasl.password': 'public',
+        'security.protocol': 'PLAINTEXT',
         'fetch.max.bytes': 50 * 1024 * 1024, # 50 MB
         'session.timeout.ms': 30000,  # For stable group membership
     })
@@ -145,84 +138,16 @@ def kafka_task(target, router, queue, db, logger, events, memory):
             topic = msg.topic()
             offset = msg.offset()
             partition = msg.partition()
-
-            # Set messages list
-            messages = []
+            timestamp = msg.timestamp()[0] / 1000
 
             # Update the bytes received counter
             memory['bytes_received'] += len(value)
-
-            # Remove the first 5 bytes (we don't need them)
-            value = value[5:]
-
-            # Parse the Avro encoded exaBGP message
-            parsed = fastavro.schemaless_reader(
-                BytesIO(value), 
-                {
-                    "type": "record",
-                    "name": "RisLiveBinary",
-                    "namespace": "net.ripe.ris.live",
-                    "fields": [
-                        {
-                            "name": "type",
-                            "type": {
-                                "type": "enum",
-                                "name": "MessageType",
-                                "symbols": ["STATE", "OPEN", "UPDATE", "NOTIFICATION", "KEEPALIVE"],
-                            },
-                        },
-                        {"name": "timestamp", "type": "long"},
-                        {"name": "host", "type": "string"},
-                        {"name": "peer", "type": "bytes"},
-                        {
-                            "name": "attributes",
-                            "type": {"type": "array", "items": "int"},
-                            "default": [],
-                        },
-                        {
-                            "name": "prefixes",
-                            "type": {"type": "array", "items": "bytes"},
-                            "default": [],
-                        },
-                        {"name": "path", "type": {"type": "array", "items": "long"}, "default": []},
-                        {"name": "ris_live", "type": "string"},
-                        {"name": "raw", "type": "string"},
-                    ],
-                }
-            )
-            
-            # Cast from int to datetime float
-            timestamp = parsed['timestamp'] / 1000
-            host = parsed['host'] # Extract Host
-
-            # HACK: Skip messages from collectors that are not in our configured list
-            #       This is a temporary solution until we have a proper way to filter messages.
-            #       We should have a way to filter by host and possibly peer like in Route Views.
-            if host is not router:
-                continue
             
             # Update the approximated time lag preceived by the consumer
             memory['time_lag'] = datetime.now() - datetime.fromtimestamp(timestamp)
             memory['time_preceived'] = datetime.fromtimestamp(timestamp)
 
-            # Parse to BMP messages and add to the queue
-            # JSON Schema: https://ris-live.ripe.net/manual/
-            marshal = json.loads(parsed['ris_live'])
+            # TODO: Parse the message and replace the peer_distinguisher with our own hash representation
+            #       Of the Route Views Collector name (SHA256) through the BMPv3.construct() function (e.g. the host).
 
-            messages.extend(BMPv3.construct(
-                collector=f'{router}.ripe.net',
-                peer_ip=marshal['peer'],
-                peer_asn=int(marshal['peer_asn']), # Cast to int from string
-                timestamp=marshal['timestamp'],
-                msg_type='PEER_STATE' if marshal['type'] == 'RIS_PEER_STATE' else marshal['type'],
-                path=marshal.get('path', []),
-                origin=marshal.get('origin', 'INCOMPLETE'),
-                community=marshal.get('community', []),
-                announcements=marshal.get('announcements', []),
-                withdrawals=marshal.get('withdrawals', []),
-                state=marshal.get('state', None),
-                med=marshal.get('med', None)
-            ))
-                
-            for message in messages:
-                queue.put((message, offset, topic, partition))
+            queue.put((value, offset, topic, partition))

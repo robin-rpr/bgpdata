@@ -6,7 +6,7 @@ import bgpkit
 import struct
 import time
 
-def rib_task(target, router, queue, db, logger, events, memory):
+def rib_task(openbmp, host, queue, db, logger, events, memory):
     """
     Task to inject RIB messages from MRT Data Dumps into the queue.
     """
@@ -16,14 +16,14 @@ def rib_task(target, router, queue, db, logger, events, memory):
         return
 
     # Broadcast the stage
-    memory['active_stage'] = "RIB_DUMP"
+    memory['source'] = "rib"
 
     try:
         # Find the latest RIB file
-        if router == "route-views2":
+        if host == "route-views2":
             index = f"https://archive.routeviews.org/bgpdata/{datetime.now().year}.{datetime.now().month:02d}/RIBS/"
         else:
-            index = f"https://archive.routeviews.org/{router}/bgpdata/{datetime.now().year}.{datetime.now().month:02d}/RIBS/"
+            index = f"https://archive.routeviews.org/{host}/bgpdata/{datetime.now().year}.{datetime.now().month:02d}/RIBS/"
 
         response = requests.get(index, timeout=30)
         response.raise_for_status()
@@ -53,7 +53,7 @@ def rib_task(target, router, queue, db, logger, events, memory):
 
                     # Construct the BMP message
                     batch = BMPv3.construct(
-                        collector=router,
+                        collector=host,
                         peer_ip=elem['peer_ip'],
                         peer_asn=elem['peer_asn'],
                         timestamp=elem['timestamp'],
@@ -82,7 +82,7 @@ def rib_task(target, router, queue, db, logger, events, memory):
                     )
 
                     # Track the bytes received metric
-                    memory['bytes_received'] += sum(len(message) for message in messages)
+                    memory['bytes_received'] += sum(len(message) for message in batch)
 
                     # Add batch to messages
                     messages.extend(batch)

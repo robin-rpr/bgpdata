@@ -3,7 +3,6 @@ import click
 import sys
 import os
 import asyncio
-import importlib
 from flask.cli import FlaskGroup
 from alembic.config import Config
 from alembic import command
@@ -21,21 +20,21 @@ def cli():
     """BGPDATA Management Script."""
     pass
 
-@cli.command("proxy")
-@click.argument('type', required=True)
-def proxy(_type):
+@cli.command("collector")
+@click.argument('provider', required=True)
+def collector(provider):
     """
-    Proxy data from a source.
+    Attaches to a collector.
     """
-    try:
-        module_path = f"proxies.{_type}.main"
-        module = importlib.import_module(module_path)
+
+    if provider == "routeviews":
+        import collectors.routeviews.main as module
         asyncio.run(module.main())
-    except ModuleNotFoundError:
-        click.echo(f"Error: Proxy for type '{_type}' not found.", err=True)
-        sys.exit(1)
-    except Exception as e:
-        click.echo(f"Error: {e}", err=True)
+    elif provider == "ris":
+        import collectors.ris.main as module
+        asyncio.run(module.main())
+    else:
+        click.echo(f"Error: Provider '{provider}' not found.", err=True)
         sys.exit(1)
 
 @cli.command("migrate")

@@ -16,13 +16,12 @@ Redistribution and use in source and binary forms, with or without modification,
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 from datetime import timedelta
-from models.proxy import Proxy
+from models.collector import Collector
 from protocols.bmp import BMPv3
-from proxies.routeviews.org.config import *
-from proxies.routeviews.org.tasks.kafka import kafka_task
-from proxies.routeviews.org.tasks.rib import rib_task
-from proxies.routeviews.org.tasks.sender import sender_task
-from proxies.routeviews.org.tasks.logging import logging_task
+from collectors.routeviews.tasks.kafka import kafka_task
+from collectors.routeviews.tasks.rib import rib_task
+from collectors.routeviews.tasks.sender import sender_task
+from collectors.routeviews.tasks.logging import logging_task
 import logging
 import signal
 import time
@@ -34,10 +33,10 @@ log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
 logger.setLevel(getattr(logging, log_level, logging.INFO))
 
 # Environment variables
-target = os.getenv('PROXY_TARGET')
-router = os.getenv('PROXY_ROUTER')
+openbmp = os.getenv('OPENBMP_FQDN')
+host = os.getenv('COLLECTOR_HOST')
 
-# Route Views Collectors
+# Collectors
 collectors = {
     'amsix.ams': [293,1103,1140,3320,6204,6777,20253,28283,34177,37271,39120,49544,56987,213241,271253,328832,398465],
     'route-views.amsix': [1103,3214,3399,6762,6830,8888,9002,12779,12859,16509,16552,30844,38880,39591,42541,44324,47957,50763,51019,51088,56662,58511,60144,60150,61955,199524,200242,208753,211398,213151,216311,267613],
@@ -72,67 +71,48 @@ collectors = {
     'route-views.wide': [2497,2500,2516,7500],
 }
 
-def before_start(target, router, queue, db, events):
+def before_start(self):
     # Validate database state
-    if db.get(b'started') == b'\x01':
-        if db.get(b'ready') == b'\x01':
+    if self.db.get(b'started') == b'\x01':
+        if self.db.get(b'ready') == b'\x01':
             # Database is consistent, set the events
-            events['injection'].set()
-            events['provision'].set()
+            self.events['injection'].set()
+            self.events['provision'].set()
         else:
             # Database is in an inconsistent state
             raise RuntimeError("Inconsistent database")
 
-    messages = []
-
-    # Send ROUTER INIT message
-    messages.extend(BMPv3.construct(
-        collector=router,
-        local_ip='127.0.0.1',
-        local_port=179,
-        bgp_id='192.0.2.1',
-        my_as=64512,
-        msg_type='ROUTER_INIT',
-        hold_time=180,
-        optional_params=b'' # No optional parameters
-    ))
-
-    # Send PEER UP message
-    messages.extend(BMPv3.construct(
-        collector=router,
-        peer_ip='127.0.0.1',
-        peer_asn=64513, # Private ASN
-        timestamp=time.time(),
-        msg_type='PEER_STATE',
-        path=[],
-        origin='INCOMPLETE',
-        community=[],
-        announcements=[],
-        withdrawals=[],
-        state='CONNECTED',
-        my_as=64512, # Private ASN
-        hold_time=180, # 3 minutes
-        bgp_id='192.0.2.1', # BGP Identifier (Using a unique TEST-NET-1 IP)
-        optional_params=b'' # No optional parameters
-    ))
-
-    # Add the messages to the queue
+    # Initialize the BMP connection
+    messages = BMPv3.construct(
+        collector=self.host,
+        msg_type='INIT'
+    )
     for message in messages:
-        queue.put((message, 0, None, -1))
+        self.queue.put((message, 0, None, -1))
+
+def before_stop(_, self):
+     # Terminate the BMP connection
+    messages = BMPv3.construct(
+        collector=self.host,
+        msg_type='TERM'
+    )
+    for message in messages:
+        self.queue.put((message, 0, None, -1))
 
 async def main():
-    proxy = Proxy(
+    collector = Collector(
         before_start=before_start,
-        after_stop=lambda signum: os._exit(signum),
-        target=target,
-        router=router,
+        before_stop=before_stop,
+        after_stop=lambda signum, _: os._exit(signum),
+        openbmp=openbmp,
+        host=host,
         memory={
             'time_lag': timedelta(0),
             'time_preceived': None,
             'bytes_sent': 0,
             'bytes_received': 0,
-            'active_stage': None,
-            'kafka_topics': [f'{router.replace("-","")}.{peer}.bmp_raw' for peer in collectors[router]]
+            'source': None,
+            'kafka_topics': [f'{host.replace("-","")}.{peer}.bmp_raw' for peer in collectors[host]]
         },
         events=[
             'injection',
@@ -148,10 +128,10 @@ async def main():
 
     # Register signal handlers
     for sig in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(sig, proxy.stop)
+        signal.signal(sig, collector.stop)
 
-    # Start Proxy
-    await proxy.start()
+    # Start Collector
+    await collector.start()
 
 if __name__ == "__main__":
     main()

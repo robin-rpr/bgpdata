@@ -3,7 +3,7 @@ import select
 import socket
 import time
 
-def sender_task(target, router, queue, db, status, logger):
+def sender_task(openbmp, host, queue, db, logger, events, memory):
     """
     Task to transmit messages from the queue to the OpenBMP TCP socket.
     """
@@ -12,8 +12,9 @@ def sender_task(target, router, queue, db, status, logger):
     backpressure_threshold = 1.0  # Threshold in seconds to detect backpressure
     send_delay = 0.0  # Initial delay between sends
 
-    # Create a connection to the target
-    with socket.create_connection((target.split(':')[0], int(target.split(':')[1])), timeout=60) as sock:
+    # Create a connection to the openbmp
+    logger.info(f"Connecting to {openbmp}")
+    with socket.create_connection((openbmp.split(':')[0], int(openbmp.split(':')[1])), timeout=60) as sock:
         while True:
             try:
                 # Ensure the connection is alive
@@ -29,7 +30,7 @@ def sender_task(target, router, queue, db, status, logger):
 
                 # Send the message
                 sock.sendall(message)
-                status['bytes_sent'] += len(message)
+                memory['bytes_sent'] += len(message)
                 
                 # Measure the time taken for sending the message
                 send_time = time.time() - start_time

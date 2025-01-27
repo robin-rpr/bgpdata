@@ -4,7 +4,7 @@ import socket
 import struct
 import time
 
-def kafka_task(target, router, queue, db, logger, events, memory):
+def kafka_task(openbmp, host, queue, db, logger, events, memory):
     """
     Task to poll a batch of messages from Kafka and add them to the queue.
     """
@@ -13,7 +13,7 @@ def kafka_task(target, router, queue, db, logger, events, memory):
     events['injection'].wait()
 
     # Broadcast the stage
-    memory['active_stage'] = "KAFKA_STREAM"
+    memory['source'] = "kafka"
 
     # Create Kafka Consumer
     consumer = Consumer({
@@ -147,11 +147,13 @@ def kafka_task(target, router, queue, db, logger, events, memory):
             memory['time_lag'] = datetime.now() - datetime.fromtimestamp(timestamp)
             memory['time_preceived'] = datetime.fromtimestamp(timestamp)
 
-            # Skip raw binary header (we don't need these fields)
-            message = value[76 + struct.unpack("!H", value[54:56])[
+            # NOTE: Strip the OpenBMP raw binary header from the message.
+            #       Route Views Kafka attaches a custom raw binary header 
+            #       wrapper with metadata from OpenBMP that we don't need.
+            value = value[76 + struct.unpack("!H", value[54:56])[
                 0] + struct.unpack("!H", value[72:74])[0]:]
 
             # TODO: Parse the message and replace the peer_distinguisher with our own hash representation
             #       Of the Route Views Collector name (SHA256) through the BMPv3.construct() function (e.g. the host).
 
-            queue.put((message, offset, topic, partition))
+            queue.put((value, offset, topic, partition))

@@ -51,14 +51,12 @@ class BMPv3:
     BGP_AS_TRANS = 23456          # BGP ASN when AS exceeds 16bits
 
     @staticmethod
-    def construct(collector: str, local_ip='', local_port=0, peer_ip='', peer_asn='', timestamp=0.0, msg_type='UPDATE', path=[], origin='INCOMPLETE', community=[], announcements=[], withdrawals=[], state=None, med=None, my_as=None, hold_time=None, bgp_id=None, optional_params=None) -> List[bytes]:
+    def construct(collector: str, peer_ip='', peer_asn='', timestamp=0.0, msg_type='UPDATE', path=[], origin='INCOMPLETE', community=[], announcements=[], withdrawals=[], state=None, med=None, my_as=None, hold_time=None, bgp_id=None, optional_params=None) -> List[bytes]:
         """
         Construct BMPv3 (RFC7854) messages.
 
         Args:
             collector (str): The collector name
-            local_ip (str): The local IP address
-            local_port (int): The local port
             peer_ip (str): The peer IP address
             peer_asn (int): The peer AS number
             timestamp (float): Unix timestamp
@@ -135,7 +133,7 @@ class BMPv3:
                     }
 
                 # Build BMP message
-                bmp_message = BMPv3.construct_bmp_route_monitoring_message(
+                bmp_message = BMPv3.construct_bmp_monitoring_message(
                     peer_ip=peer_ip,
                     peer_asn=peer_asn,
                     timestamp=timestamp,
@@ -178,7 +176,7 @@ class BMPv3:
                     }
 
                 # Build BMP message
-                bmp_message = BMPv3.construct_bmp_route_monitoring_message(
+                bmp_message = BMPv3.construct_bmp_monitoring_message(
                     peer_ip=peer_ip,
                     peer_asn=peer_asn,
                     timestamp=timestamp,
@@ -197,16 +195,15 @@ class BMPv3:
             )
             bmp_messages.append(bmp_message)
 
-        elif msg_type.upper() == "ROUTER_INIT":
-            bmp_message = BMPv3.construct_bmp_router_init_message(
-                local_ip=local_ip,
-                local_port=local_port,
-                my_as=my_as,
-                bgp_id=bgp_id,
-                collector=collector,
-                hold_time=hold_time,
-                optional_params=optional_params
+        elif msg_type.upper() == "INIT":
+            bmp_message = BMPv3.construct_bmp_init_message(
+                router_name=collector,
+                router_descr=collector
             )
+            bmp_messages.append(bmp_message)
+
+        elif msg_type.upper() == "TERM":
+            bmp_message = BMPv3.construct_bmp_term_message()
             bmp_messages.append(bmp_message)
 
         # Handle PEER_STATE messages
@@ -241,7 +238,7 @@ class BMPv3:
         return bmp_messages
         
     @staticmethod
-    def construct_bmp_route_monitoring_message(peer_ip, peer_asn, timestamp, update_message, collector):
+    def construct_bmp_monitoring_message(peer_ip, peer_asn, timestamp, update_message, collector):
         """
         Construct a BMP Route Monitoring message containing a BGP UPDATE message.
 
@@ -302,44 +299,72 @@ class BMPv3:
         return bmp_message
     
     @staticmethod
-    def construct_bmp_router_init_message(local_ip, local_port, my_as, bgp_id, collector, hold_time=180, optional_params=b'') -> bytes:
+    def construct_bmp_init_message(router_name, router_descr):
         """
-        Construct a BMP Router Init Notification message.
-
+        Construct a BMP INIT message similar to Script 1's `getInitMessage`.
+        
         Args:
-            local_ip (str): The local IP address of the OpenBMP server.
-            local_port (int): The local port (typically 179 for BGP).
-            my_as (int): Your AS number.
-            bgp_id (str): Your BGP Identifier.
-            collector (str): The collector name.
-            optional_params (bytes): Optional parameters for BGP OPEN.
+            router_name (str): The router name being monitored.
+            router_descr (str): The router description.
 
         Returns:
-            bytes: The BMP message in bytes.
+            bytes: The BMP INIT message in bytes.
         """
-        bmp_msg_type = 4  # Router Init Notification
-        per_peer_header = BMPv3.build_bmp_per_peer_header(local_ip, my_as, timestamp=0, collector=collector)
+        # Encode router description and name
+        router_descr_bytes = router_descr.encode('utf-8')
+        router_name_bytes = router_name.encode('utf-8')
+
+        # sysDescr TLV (Type=1)
+        sysDescr_tlv = struct.pack('!HH', 1, len(router_descr_bytes)) + router_descr_bytes
+
+        # sysName TLV (Type=2)
+        sysName_tlv = struct.pack('!HH', 2, len(router_name_bytes)) + router_name_bytes
+
+        # Calculate the total TLV length
+        total_tlv_length = len(sysDescr_tlv) + len(sysName_tlv)
+
+        # Create BMP Common Header
+        version = 3  # BMP version
+        msg_type = 4  # INIT Message
+        # BMP Common Header: Version (1 byte) | Message Length (4 bytes) | Message Type (1 byte)
+        bmp_common_header = struct.pack('!BIB', version, BMPv3.BMP_HDRv3_LEN + total_tlv_length, msg_type)
+
+        # Build the full BMP INIT message
+        init_message = bmp_common_header + sysDescr_tlv + sysName_tlv
+
+        return init_message
+
+    @staticmethod
+    def construct_bmp_term_message(reason_code=1):
+        """
+        Construct a BMP TERM message similar to Script 1's `getTerminationMessage`.
         
-        # Construct BGP OPEN message for Router Init
-        sent_open_message = BMPv3.build_bgp_open_message(my_as, hold_time=hold_time, bgp_id=bgp_id, optional_params=optional_params)
-        
-        # For Router Init, there might be no Received OPEN message
-        router_init_msg = (
-            socket.inet_pton(socket.AF_INET6, '::ffff:' + local_ip) +  # Local Address (IPv6 mapped IPv4)
-            struct.pack('!H', local_port) +                           # Local Port
-            b'\x00' * 16 +                                            # Placeholder for Remote Address (IPv6 mapped IPv4)
-            struct.pack('!H', 0) +                                    # Remote Port (0 for Router Init)
-            sent_open_message                                         # Sent OPEN
-        )
-        
-        total_length = BMPv3.BMP_HDRv3_LEN + len(per_peer_header) + len(router_init_msg)
-        
-        bmp_common_header = struct.pack('!BIB', 3, total_length, bmp_msg_type)
-        
-        # Build the full BMP message
-        bmp_message = bmp_common_header + per_peer_header + router_init_msg
-        
-        return bmp_message
+        Args:
+            reason_code (int): The termination reason code (default: 1).
+
+        Returns:
+            bytes: The BMP TERM message in bytes.
+        """
+        # Reason TLV (Type=1)
+        # According to BMP spec, Type=1 is 'Notification Reason'
+        # The content is typically a 2-byte reason code
+        # Here, reason_code is a 2-byte value
+        reason_bytes = struct.pack('!H', reason_code)
+        reason_tlv = struct.pack('!HH', 1, len(reason_bytes)) + reason_bytes
+
+        # Calculate the total TLV length
+        total_tlv_length = len(reason_tlv)
+
+        # Create BMP Common Header
+        version = 3  # BMP version
+        msg_type = 5  # TERM Message
+        # BMP Common Header: Version (1 byte) | Message Length (4 bytes) | Message Type (1 byte)
+        bmp_common_header = struct.pack('!BIB', version, BMPv3.BMP_HDRv3_LEN + total_tlv_length, msg_type)
+
+        # Build the full BMP TERM message
+        term_message = bmp_common_header + reason_tlv
+
+        return term_message
 
     @staticmethod
     def construct_bmp_peer_up_message(peer_ip, peer_asn, timestamp, collector, my_as, hold_time, bgp_id, optional_params=b''):
