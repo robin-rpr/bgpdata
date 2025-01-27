@@ -2,7 +2,7 @@ from datetime import datetime
 import struct
 import time
 
-def logging_task(source, target, router, queue, db, logger, events, memory):
+def logging_task(target, router, queue, db, logger, events, memory):
     """
     Task to periodically log the most recent timestamp, time lag, current poll interval, and consumption rate.
     """

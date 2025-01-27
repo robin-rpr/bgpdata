@@ -4,7 +4,7 @@ import socket
 import struct
 import time
 
-def kafka_task(source, target, router, queue, db, logger, events, memory):
+def kafka_task(target, router, queue, db, logger, events, memory):
     """
     Task to poll a batch of messages from Kafka and add them to the queue.
     """

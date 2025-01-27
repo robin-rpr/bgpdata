@@ -3,7 +3,7 @@ import select
 import socket
 import time
 
-def sender_task(source, target, router, queue, db, status, logger):
+def sender_task(target, router, queue, db, status, logger):
     """
     Task to transmit messages from the queue to the OpenBMP TCP socket.
     """

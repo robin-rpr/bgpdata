@@ -34,7 +34,6 @@ log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
 logger.setLevel(getattr(logging, log_level, logging.INFO))
 
 # Environment variables
-source = os.getenv('PROXY_SOURCE')
 target = os.getenv('PROXY_TARGET')
 router = os.getenv('PROXY_ROUTER')
 
@@ -73,7 +72,7 @@ collectors = {
     'route-views.wide': [2497,2500,2516,7500],
 }
 
-def before_start(source, target, router, queue, db, events):
+def before_start(target, router, queue, db, events):
     # Validate database state
     if db.get(b'started') == b'\x01':
         if db.get(b'ready') == b'\x01':
@@ -88,7 +87,7 @@ def before_start(source, target, router, queue, db, events):
 
     # Send ROUTER INIT message
     messages.extend(BMPv3.construct(
-        collector=f'{router}.ripe.net',
+        collector=router,
         local_ip='127.0.0.1',
         local_port=179,
         bgp_id='192.0.2.1',
@@ -100,7 +99,7 @@ def before_start(source, target, router, queue, db, events):
 
     # Send PEER UP message
     messages.extend(BMPv3.construct(
-        collector=f'{router}.ripe.net',
+        collector=router,
         peer_ip='127.0.0.1',
         peer_asn=64513, # Private ASN
         timestamp=time.time(),
@@ -125,7 +124,6 @@ async def main():
     proxy = Proxy(
         before_start=before_start,
         after_stop=lambda signum: os._exit(signum),
-        source=source,
         target=target,
         router=router,
         memory={
@@ -134,7 +132,7 @@ async def main():
             'bytes_sent': 0,
             'bytes_received': 0,
             'active_stage': None,
-            'kafka_topics': ['ris-live']
+            'kafka_topics': [f'{router.replace("-","")}.{peer}.bmp_raw' for peer in collectors[router]]
         },
         events=[
             'injection',
@@ -154,3 +152,6 @@ async def main():
 
     # Start Proxy
     await proxy.start()
+
+if __name__ == "__main__":
+    main()

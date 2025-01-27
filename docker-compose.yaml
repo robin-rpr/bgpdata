@@ -93,7 +93,6 @@ services:
             POSTGRESQL_DB: default
             POSTGRESQL_USER: core
             POSTGRESQL_PASSWORD: core
-            PROXY_SOURCE: routeviews.org
             PROXY_ROUTER: route-views.amsix
             PROXY_TARGET: openbmp-collector:5000
         depends_on:
@@ -106,7 +105,7 @@ services:
             - .:/app
             - core_rd_data:/var/lib/rocksdb
         entrypoint: >
-            python manage.py proxy
+            python manage.py proxy --type=routeviews
 
     #core-aggregator:
     #    build: .

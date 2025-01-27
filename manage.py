@@ -3,6 +3,7 @@ import click
 import sys
 import os
 import asyncio
+import importlib
 from flask.cli import FlaskGroup
 from alembic.config import Config
 from alembic import command
@@ -20,23 +21,22 @@ def cli():
     """BGPDATA Management Script."""
     pass
 
-@cli.command("collector")
-def collector():
+@cli.command("proxy")
+@click.argument('type', required=True)
+def proxy(_type):
     """
-    Run the data collector service.
+    Proxy data from a source.
     """
-    from services.collector.main import main as collector_main
-    click.echo("Starting collector service...")
-    asyncio.run(collector_main())
-
-@cli.command("aggregator")
-def aggregator():
-    """
-    Run the data aggregator service.
-    """
-    from services.aggregator.main import main as aggregator_main
-    click.echo("Starting aggregator service...")
-    asyncio.run(aggregator_main())
+    try:
+        module_path = f"proxies.{_type}.main"
+        module = importlib.import_module(module_path)
+        asyncio.run(module.main())
+    except ModuleNotFoundError:
+        click.echo(f"Error: Proxy for type '{_type}' not found.", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
 
 @cli.command("migrate")
 def migrate():
