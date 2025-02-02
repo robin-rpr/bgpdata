@@ -24,7 +24,6 @@ from collectors.routeviews.tasks.sender import sender_task
 from collectors.routeviews.tasks.logging import logging_task
 import logging
 import signal
-import time
 import os
 
 # Logger
