@@ -31,7 +31,7 @@ Follow these instructions to get the project up and running on your local machin
 First, clone the repository to your local machine:
 
 ```sh
-git clone git@github.com:robin-rpr/bgpdata.git
+git clone git@github.com:bgpdata/bgpdata.git
 cd bgpdata
 ```
 
