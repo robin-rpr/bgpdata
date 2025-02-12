@@ -1,3 +1,20 @@
+"""
+BGPDATA - BGP Data Collection and Analytics Service
+
+This software is part of the BGPDATA project, which is designed to collect, process, and analyze BGP data from various sources.
+It helps researchers and network operators get insights into their network by providing a scalable and reliable way to analyze and inspect historical and live BGP data from Route Collectors around the world.
+
+Author: Robin Röper
+
+© 2024 BGPDATA. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+1. Redistributions of source code must retain the above copyright notice, this list of conditions, and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions, and the following disclaimer in the documentation and/or other materials provided with the distribution.
+3. Neither the name of BGPDATA nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+"""
 from confluent_kafka import KafkaError, Consumer, TopicPartition, KafkaException
 from datetime import datetime
 import socket
@@ -15,9 +32,14 @@ def kafka_task(openbmp, host, queue, db, logger, events, memory):
     # Broadcast the stage
     memory['source'] = "kafka"
 
+    # Bootstrap Servers
+    bootstrap_servers = 'stream.routeviews.org:9092'
+
+    logger.info(f"Connecting to {bootstrap_servers}")
+
     # Create Kafka Consumer
     consumer = Consumer({
-        'bootstrap.servers': 'stream.routeviews.org:9092',
+        'bootstrap.servers': bootstrap_servers,
         'group.id': f'bgpdata-{socket.gethostname()}',
         'partition.assignment.strategy': 'roundrobin',
         'enable.auto.commit': False,
@@ -50,8 +72,10 @@ def kafka_task(openbmp, host, queue, db, logger, events, memory):
                     
                     # If the offset is stored, set it
                     if last_offset is not None:
-                        # +1 because we start from the next message
-                        partition.offset = int.from_bytes(last_offset, byteorder='big') + 1
+                        partition.offset = int.from_bytes(last_offset, byteorder='big')
+                        if int.from_bytes(last_offset, byteorder='big') > 0:
+                            # NOTE: +1 because we start from the next message
+                            partition.offset += 1
                     
                     # Log the assigned offset
                     logger.info(
@@ -72,12 +96,14 @@ def kafka_task(openbmp, host, queue, db, logger, events, memory):
 
     # Provision the consumer
     if not events['provision'].is_set():
+        # Get all offsets
+        all_offsets = []
         for topic in memory['kafka_topics']:
             # Get the oldest timestamp for the topic
-            timestamp = datetime.fromtimestamp(struct.unpack('>d', db.get(f'timestamp'.encode('utf-8')) or b'\x00\x00\x00\x00\x00\x00\x00\x00')[0])
+            target_timestamp = datetime.fromtimestamp(struct.unpack('>d', db.get(f'target_timestamp'.encode('utf-8')) or b'\x00\x00\x00\x00\x00\x00\x00\x00')[0])
 
             # Convert to milliseconds
-            target_timestamp_ms = int(timestamp.timestamp() * 1000)
+            target_timestamp_ms = int(target_timestamp.timestamp() * 1000)
 
             # Get metadata to retrieve all partitions for the topic
             metadata = consumer.list_topics(topic, timeout=10)
@@ -89,25 +115,28 @@ def kafka_task(openbmp, host, queue, db, logger, events, memory):
             # Check if the offset is valid and not -1 (which means no valid offset was found for the given timestamp)
             valid_offsets = [tp for tp in offsets if tp.offset != -1]
 
-            if valid_offsets:
-                # Store offsets in database
-                for tp in valid_offsets:
-                    db.set(
-                        f'offset_{tp.topic}_{tp.partition}'.encode('utf-8'),
-                        tp.offset.to_bytes(16, byteorder='big')
-                    )
-
-                # Assign the offsets
-                consumer.assign(valid_offsets)
+            if len(valid_offsets) > 0:
+                # Add valid offsets to the list
+                all_offsets.extend(valid_offsets)
             else:
                 # Failed to find valid offsets
-                raise Exception("No valid offsets found for the given timestamp")
+                logger.warning(f"No offsets found for topic {topic}. Peer may be offline.")
 
-            # Set the provision event
-            events['provision'].set()
+        # Store offsets in database
+        for tp in all_offsets:
+            db.set(
+                f'offset_{tp.topic}_{tp.partition}'.encode('utf-8'),
+                tp.offset.to_bytes(16, byteorder='big')
+            )
 
-            # Set database as ready
-            db.set(b'ready', b'\x01')
+        # Assign the offsets
+        consumer.assign(all_offsets)
+
+        # Set the provision event
+        events['provision'].set()
+
+        # Set database as ready
+        db.set(b'ready', b'\x01')
 
     # Start Polling
     while True:
@@ -153,7 +182,4 @@ def kafka_task(openbmp, host, queue, db, logger, events, memory):
             value = value[76 + struct.unpack("!H", value[54:56])[
                 0] + struct.unpack("!H", value[72:74])[0]:]
 
-            # TODO: Parse the message and replace the peer_distinguisher with our own hash representation
-            #       Of the Route Views Collector name (SHA256) through the BMPv3.construct() function (e.g. the host).
-
-            queue.put((value, offset, topic, partition))
+            queue.put((value, offset, topic, partition, True))

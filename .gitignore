@@ -24,9 +24,6 @@ __pycache__
 # Libsass
 static/styles/*.css
 
-# Cache
-.cache/
-
 # RocksDB
 .rocksdb/
 

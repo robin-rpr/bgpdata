@@ -17,7 +17,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 """
 from datetime import timedelta
 from models.collector import Collector
-from protocols.bmp import BMPv3
+from libs.bmp import BMPv3
 from collectors.ris.tasks.kafka import kafka_task
 from collectors.ris.tasks.rib import rib_task
 from collectors.ris.tasks.sender import sender_task
@@ -32,7 +32,7 @@ log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
 logger.setLevel(getattr(logging, log_level, logging.INFO))
 
 # Environment variables
-openbmp = os.getenv('OPENBMP_FQDN')
+openbmp = os.getenv('OPENBMP_CONNECT')
 host = os.getenv('COLLECTOR_HOST')
 
 # Collectors
@@ -52,21 +52,18 @@ def before_start(self):
             raise RuntimeError("Inconsistent database")
 
     # Initialize the BMP connection
-    messages = BMPv3.construct(
-        collector=f'{self.host}.ripe.net',
-        msg_type='INIT'
+    message = BMPv3.init_message(
+        router_name=f'{self.host}.ripe.net',
+        router_descr=f'{self.host}.ripe.net'
     )
-    for message in messages:
-        self.queue.put((message, 0, None, -1))
+    self.queue.put((message, 0, None, -1, False))
 
 def before_stop(_, self):
     # Terminate the BMP connection
-    messages = BMPv3.construct(
-        collector=f'{self.host}.ripe.net',
-        msg_type='TERM'
+    message = BMPv3.term_message(
+        reason_code=1
     )
-    for message in messages:
-        self.queue.put((message, 0, None, -1))
+    self.queue.put((message, 0, None, -1, False))
 
 async def main():
     collector = Collector(

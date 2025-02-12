@@ -50,7 +50,7 @@ The project directory contains the following files:
 To build and start BGPDATA, run the following command in the project directory:
 
 ```sh
-make up
+docker compose up -d
 ```
 
 This command will:

@@ -93,7 +93,7 @@ services:
             POSTGRESQL_USER: core
             POSTGRESQL_PASSWORD: core
             COLLECTOR_HOST: route-views.amsix
-            OPENBMP_FQDN: openbmp-collector:5000
+            OPENBMP_CONNECT: openbmp-collector:5000
         depends_on:
             core-db:
                 condition: service_healthy
@@ -224,6 +224,11 @@ services:
             timeout: 10s
             retries: 3
         image: openbmp/collector:2.2.3
+        depends_on:
+            openbmp-db:
+                condition: service_healthy
+            openbmp-kafka:
+                condition: service_healthy
         sysctls:
             - net.ipv4.tcp_keepalive_intvl=30
             - net.ipv4.tcp_keepalive_probes=5
@@ -265,6 +270,11 @@ services:
         container_name: openbmp-zookeeper
         image: confluentinc/cp-zookeeper:7.7.1
         restart: unless-stopped
+        healthcheck:
+            test: ["CMD-SHELL", "nc -z localhost 2181 || exit -1"]
+            interval: 10s
+            timeout: 5s
+            retries: 3
         volumes:
             - obmp_zk_data:/var/lib/zookeeper
         environment:
@@ -280,6 +290,9 @@ services:
             interval: 30s
             timeout: 60s # Command may take some time.
             retries: 10
+        depends_on:
+            openbmp-zookeeper:
+                condition: service_healthy
         # Change the mount point to where you want to store Kafka data.
         #   Normally 80GB or more
         volumes:
