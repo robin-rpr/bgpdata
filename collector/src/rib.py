@@ -33,63 +33,107 @@ def rib_task(host, queue, db, logger, events, memory):
     memory['task'] = "rib"
 
     class MessageBucket:
-        def __init__(self, peer, raw_path_attributes, initial_prefix, mp_reach, collector, timestamp):
+        def __init__(self, peer, raw_path_attribute, initial_prefix, mp_reach, collector, timestamp):
             """
-            Message Bucket constructor.
-
             Args:
-                peer: dict containing at least 'ip_address' and 'asn'
-                raw_path_attributes: bytes (concatenated BGP path attributes)
-                initial_prefix: bytes (encoded NLRI for one prefix)
-                mp_reach: bytes or None (optional MP_REACH attribute value)
-                collector: string (collector name/identifier)
-                timestamp: float (timestamp from the MRT entry)
+                peer (dict): Should contain at least 'ip_address' and 'asn'.
+                raw_path_attribute (bytes): The complete raw BGP path attributes (excluding MP_REACH).
+                initial_prefix (bytes): The first NLRI prefix.
+                mp_reach (bytes or None): The MP_REACH attribute data (without header), if applicable.
+                collector (str): Collector identifier.
+                timestamp (float): Timestamp of the update.
             """
             self.peer = peer
-            self.raw_path_attributes = raw_path_attributes
-            self.mp_reach = mp_reach
+            self.raw_path_attribute = raw_path_attribute
+            self.mp_reach = mp_reach  # Can be None if not used.
             self.prefixes = [initial_prefix]
             self.collector = collector
             self.timestamp = timestamp
 
         def add_prefix(self, prefix):
+            """
+            Append another NLRI prefix to the bucket.
+            Optionally, you can flush the bucket if it becomes too large.
+            """
+            # (Optional) Flush if accumulated prefixes are too large.
+            if sum(len(p) for p in self.prefixes) >= 4000:
+                # In a real implementation you might want to return or enqueue the message here.
+                msg = self.__send_message()
+                self.prefixes = []
+                return msg
             self.prefixes.append(prefix)
+            return None
+
+        def get_mp_reach_attribute_header(self, attr_length):
+            """
+            Build the MP_REACH attribute header.
+
+            The attribute flag for MP_REACH is 144 (binary 10010000) and the type code is 14.
+            """
+            attr_flag = 144  # 0x90, binary 10010000
+            attr_type_code = 14
+            return struct.pack("!B B H", attr_flag, attr_type_code, attr_length)
 
         def finalize_bucket(self):
             """
-            Construct a BGP UPDATE message from the aggregated prefixes and wrap it in a BMP monitoring message.
+            Finalize the bucket and build the BMP message. If there are any remaining prefixes,
+            they will be assembled into the final BGP UPDATE message.
             """
-            # Concatenate all NLRI prefixes
+            if self.prefixes:
+                return self.__send_message()
+            return None
+
+        def __send_message(self):
+            # Concatenate all NLRI prefixes.
             nlri = b"".join(self.prefixes)
-            # Use the MP_REACH attribute if present; otherwise, use the original path attributes
-            path_attributes = self.mp_reach if self.mp_reach is not None else self.raw_path_attributes
+
+            if self.mp_reach is not None:
+                # Calculate the total length of the MP_REACH attribute:
+                # the MP_REACH data plus the NLRI (which is embedded in the attribute).
+                mp_reach_length = len(self.mp_reach + nlri)
+                # Build the full MP_REACH attribute by prepending the proper header.
+                full_mp_reach_attribute = (
+                    self.get_mp_reach_attribute_header(mp_reach_length) +
+                    self.mp_reach +
+                    nlri
+                )
+                # The final path attributes are the original ones plus the full MP_REACH attribute.
+                path_attributes = self.raw_path_attribute + full_mp_reach_attribute
+                # When using MP_REACH, the NLRI is part of the attribute; no separate NLRI field.
+                nlri_field = b""
+            else:
+                # No MP_REACH attribute provided: simply use the raw path attribute and append the NLRI.
+                path_attributes = self.raw_path_attribute
+                nlri_field = nlri
 
             # Build the BGP UPDATE body.
-            # BGP UPDATE format:
-            #   Withdrawn Routes Length (2 bytes) | Withdrawn Routes (0 since we don't have any)
-            #   Total Path Attribute Length (2 bytes) | Path Attributes | NLRI
+            # Format: Withdrawn Routes Length (2 bytes) | Withdrawn Routes (none) |
+            #         Total Path Attribute Length (2 bytes) | Path Attributes | NLRI (if applicable)
             withdrawn_routes_length = 0
             total_path_attr_length = len(path_attributes)
-            bgp_update_body = (struct.pack('!H', withdrawn_routes_length) +
-                            struct.pack('!H', total_path_attr_length) +
-                            path_attributes +
-                            nlri)
+            bgp_update_body = (
+                struct.pack("!H", withdrawn_routes_length) +
+                struct.pack("!H", total_path_attr_length) +
+                path_attributes +
+                nlri_field
+            )
 
             # Build the BGP header:
-            #   Marker (16 bytes of 0xff) | Length (2 bytes) | Type (1 byte, 2 = UPDATE)
+            # Marker (16 bytes of 0xff) | Length (2 bytes) | Type (1 byte, where 2 = UPDATE)
             marker = b'\xff' * 16
-            total_length = 19 + len(bgp_update_body)  # 19 = 16 (marker) + 2 (length) + 1 (type)
-            bgp_header = marker + struct.pack('!H', total_length) + struct.pack('!B', 2)
+            total_length = 19 + len(bgp_update_body)  # 19 bytes for header fields.
+            bgp_header = marker + struct.pack("!H", total_length) + struct.pack("!B", 2)
 
             bgp_update = bgp_header + bgp_update_body
 
-            # Wrap the BGP update in a BMP monitoring message using your BMPv3 library.
-            # (Parameters: peer_ip, peer_asn, timestamp, bgp_update, collector)
-            bmp_message = BMPv3.monitoring_message(self.peer['ip_address'],
-                                                self.peer['asn'],
-                                                self.timestamp,
-                                                bgp_update,
-                                                self.collector)
+            # Wrap the BGP UPDATE in a BMP monitoring message using BMPv3.
+            bmp_message = BMPv3.monitoring_message(
+                self.peer['ip_address'],
+                self.peer['asn'],
+                self.timestamp,
+                bgp_update,
+                self.collector
+            )
             return bmp_message
 
     # Get RIB file URL
@@ -145,6 +189,7 @@ def rib_task(host, queue, db, logger, events, memory):
     # Extract the list of peers
     iterator = MRT(tmp_file)
     for entry in iterator:
+        memory['rows_processed'] += 1
         if entry['mrt_header']['type'] == 13 and entry['mrt_header']['subtype'] == 1:
             # Create list of dicts.
             peers = entry['mrt_entry']['peer_list']
@@ -153,10 +198,10 @@ def rib_task(host, queue, db, logger, events, memory):
     # Iterate through the RIB entries
     iterator = MRT(tmp_file)
     for entry in iterator:
+        memory['rows_processed'] += 1
         # Process only TABLE_DUMP_V2 RIB_IPV4_UNICAST entries.
         # NOTE: Assumes MRT type 13 with subtype 2; adjust if needed.
         if entry['mrt_header']['type'] == 13 and entry['mrt_header']['subtype'] == 2:
-            memory['rows_processed'] += 1
             # Obtain the raw prefix NLRI
             raw_prefix_nlri = entry['mrt_entry']['raw_prefix_nlri']
             # Loop through each RIB entry within the MRT record
@@ -192,7 +237,8 @@ def rib_task(host, queue, db, logger, events, memory):
     # Finalize each bucket to build the BMP messages and update metrics
     for bucket in buckets.values():
         bmp_message = bucket.finalize_bucket()
-        messages.append(bmp_message)
+        if bmp_message is not None:
+            messages.append(bmp_message)
 
     # Store the timestamp for each new peer
     for peer, timestamp in timestamps.items():

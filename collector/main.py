@@ -27,6 +27,7 @@ import threading
 import asyncio
 import logging
 import signal
+import sys
 import os
 
 # Logger
@@ -40,16 +41,17 @@ kafka = os.getenv('COLLECTOR_KAFKA_CONNECT')
 host = os.getenv('COLLECTOR_HOST')
 
 # Signal handler
-def handle_shutdown(signum, frame):
+def handle_shutdown(signum, frame, shutdown_event):
     """
     Signal handler for shutdown.
 
     Args:
         signum (int): The signal number.
         frame (frame): The signal frame.
+        shutdown_event (asyncio.Event): The shutdown event.
     """
     logger.info(f"Signal {signum}. Triggering shutdown...")
-    raise SystemExit(signum)
+    shutdown_event.set()
 
 # Main Coroutine
 async def main():
@@ -80,10 +82,13 @@ async def main():
     try:
         logger.info("Starting up...")
 
-        # Register signal handlers
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            signal.signal(sig, handle_shutdown)
+        # Create an event to signal shutdown
+        shutdown_event = asyncio.Event()
+
+        # Register SIGTERM handler
+        loop = asyncio.get_event_loop()
+        loop.add_signal_handler(signal.SIGTERM, handle_shutdown, signal.SIGTERM, None, shutdown_event)
+        loop.add_signal_handler(signal.SIGINT, handle_shutdown, signal.SIGINT, None, shutdown_event)  # Handle Ctrl+C
 
         # Validate database state
         if db.get(b'started') == b'\x01':
@@ -114,8 +119,8 @@ async def main():
         future = loop.run_in_executor(executor, logging_task, host, queue, logger, memory)
         futures.append(asyncio.wrap_future(future))
 
-        # Keep loop alive
-        await asyncio.gather(*futures)
+        # Wait for the shutdown event
+        await shutdown_event.wait()
     finally:
         logger.info("Shutting down...")
 
@@ -125,13 +130,13 @@ async def main():
         )
         queue.put((message, 0, None, -1, False))
 
-        # Close the database
-        db.close()
-
         # Shutdown the executor
-        executor.shutdown(wait=False)
+        executor.shutdown(wait=False, cancel_futures=True)
 
         logger.info("Shutdown complete.")
+
+        # Exit the program
+        sys.exit()
 
 if __name__ == "__main__":
     main()
