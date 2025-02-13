@@ -86,6 +86,8 @@ services:
         build: .
         container_name: core-collector
         restart: unless-stopped
+        stop_signal: SIGTERM                    # Wind down collector safely before stopping
+        stop_grace_period: 20s                  # Wait for 20 seconds before forcefully stopping
         environment:
             POSTGRESQL_HOST: core-db
             POSTGRESQL_PORT: 5432
