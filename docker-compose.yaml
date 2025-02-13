@@ -92,7 +92,7 @@ services:
             POSTGRESQL_DB: default
             POSTGRESQL_USER: core
             POSTGRESQL_PASSWORD: core
-            COLLECTOR_HOST: route-views.wide
+            COLLECTOR_HOST: route-views.amsix
             COLLECTOR_KAFKA_CONNECT: stream.routeviews.org:9092
             COLLECTOR_OPENBMP_CONNECT: openbmp-collector:5000
             COLLECTOR_LOG_LEVEL: DEBUG
