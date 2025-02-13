@@ -28,11 +28,8 @@ services:
     # The 'core-web' service is the main application server, built with Flask
     # and served using Gunicorn with Uvicorn workers for asynchronous processing.
     #
-    # The 'core-collector' service connects to RIPE NCC's Kafka stream, processes BGP messages,
-    # and stores them in the PostgreSQL database.
-    #
-    # The 'core-aggregator' service periodically analyzes the collected data to aggregate
-    # additional information from the OpenBMP database and store it in the PostgreSQL database.
+    # The 'core-collector' service connects to a Kafka stream, processes BGP messages,
+    # and forwards them to the OpenBMP collector.
     ####
     core-db:
         image: timescale/timescaledb:latest-pg13
