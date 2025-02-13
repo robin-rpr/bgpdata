@@ -20,7 +20,7 @@ import select
 import socket
 import time
 
-def sender_task(openbmp, host, queue, db, logger, events, memory):
+def sender_task(openbmp, queue, db, logger, memory):
     """
     Task to transmit messages from the queue to the OpenBMP TCP socket.
     """
@@ -39,11 +39,11 @@ def sender_task(openbmp, host, queue, db, logger, events, memory):
                 if ready_to_read and not sock.recv(1, socket.MSG_PEEK):
                     raise ConnectionError("TCP connection closed by the peer")
 
-                # Start timing the send operation
-                start_time = time.time()
-
                 # Get the message from the queue
                 message, offset, topic, partition, update = queue.get()
+
+                # Start timing the send operation
+                start_time = time.time()
 
                 # Send the message
                 sock.sendall(message)

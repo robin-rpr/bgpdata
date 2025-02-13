@@ -17,7 +17,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 """
 import time
 
-def logging_task(openbmp, host, queue, db, logger, events, memory):
+def logging_task(host, queue, logger, memory):
     """
     Task to periodically log the current state of the collector.
     """
@@ -30,13 +30,21 @@ def logging_task(openbmp, host, queue, db, logger, events, memory):
         kbps_received = (memory['bytes_received'] * 8) / timeout / 1000
 
         # Compute time lag
-        h, remainder = divmod(memory['time_lag'].total_seconds(), 3600)
+        time_lag_values = memory['time_lag'].values()
+        maximum_lag = max(time_lag_values, default=0)  # Default to 0 if empty
+        h, remainder = divmod(maximum_lag.total_seconds() if maximum_lag else 0, 3600)
         m, s = divmod(remainder, 60)
 
-        logger.info(f"host={host} source={memory['source']} at={memory['time_preceived'].strftime('%Y-%m-%d %H:%M:%S') if memory['time_preceived'] is not None else '(no data)'} lag={int(h)}h {int(m)}m {int(s)}s receive={kbps_received:.2f} kbps send={kbps_sent:.2f} kbps queued={queue.qsize()}")
+        match memory['task']:
+            case 'rib':
+                logger.info(f"host={host} task={memory['task']} processing={memory['rows_processed']} rps receive={kbps_received:.2f} kbps send={kbps_sent:.2f} kbps queued={queue.qsize()}")
+            case 'kafka':
+                logger.info(f"host={host} task={memory['task']} lag={int(h)}h {int(m)}m {int(s)}s receive={kbps_received:.2f} kbps send={kbps_sent:.2f} kbps queued={queue.qsize()}")
+            case _:
+                logger.info(f"host={host} task={memory['task']} receive={kbps_received:.2f} kbps send={kbps_sent:.2f} kbps queued={queue.qsize()}")
             
         # Reset trackers
         memory['bytes_sent'] = 0
         memory['bytes_received'] = 0
-
+        memory['rows_processed'] = 0
         time.sleep(timeout)

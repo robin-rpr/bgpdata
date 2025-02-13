@@ -21,21 +21,13 @@ def cli():
     pass
 
 @cli.command("collector")
-@click.argument('provider', required=True)
-def collector(provider):
+def collector():
     """
-    Attaches to a collector.
+    Runs the collector.
     """
 
-    if provider == "routeviews":
-        import collectors.routeviews.main as module
-        asyncio.run(module.main())
-    elif provider == "ris":
-        import collectors.ris.main as module
-        asyncio.run(module.main())
-    else:
-        click.echo(f"Error: Provider '{provider}' not found.", err=True)
-        sys.exit(1)
+    import collector.main as module
+    asyncio.run(module.main())
 
 @cli.command("migrate")
 def migrate():

@@ -92,8 +92,10 @@ services:
             POSTGRESQL_DB: default
             POSTGRESQL_USER: core
             POSTGRESQL_PASSWORD: core
-            COLLECTOR_HOST: route-views.amsix
-            OPENBMP_CONNECT: openbmp-collector:5000
+            COLLECTOR_HOST: route-views.wide
+            COLLECTOR_KAFKA_CONNECT: stream.routeviews.org:9092
+            COLLECTOR_OPENBMP_CONNECT: openbmp-collector:5000
+            COLLECTOR_LOG_LEVEL: DEBUG
         depends_on:
             core-db:
                 condition: service_healthy
@@ -104,7 +106,7 @@ services:
             - .:/app
             - core_rd_data:/var/lib/rocksdb
         entrypoint: >
-            python manage.py collector routeviews
+            python manage.py collector
 
     ###
     # OpenBMP (Open Border Gateway Protocol Monitoring Protocol) services
@@ -272,9 +274,9 @@ services:
         restart: unless-stopped
         healthcheck:
             test: ["CMD-SHELL", "nc -z localhost 2181 || exit -1"]
-            interval: 10s
-            timeout: 5s
-            retries: 3
+            interval: 30s
+            timeout: 10s
+            retries: 5
         volumes:
             - obmp_zk_data:/var/lib/zookeeper
         environment:
