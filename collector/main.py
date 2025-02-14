@@ -103,21 +103,40 @@ async def main():
         )
         queue.put((message, 0, None, -1, False))
 
+        # Check for exceptions in each task
+        def check_exception(fut):
+            exc = fut.exception()
+            if exc is not None:
+                shutdown_event.set()
+                raise exc
+
         # Start rib task
-        future = loop.run_in_executor(executor, rib_task, host, queue, db, logger, events, memory)
-        futures.append(asyncio.wrap_future(future))
+        future = asyncio.wrap_future(
+            loop.run_in_executor(executor, rib_task, host, queue, db, logger, events, memory)
+        )
+        future.add_done_callback(check_exception)
+        futures.append(future)
 
         # Start kafka task
-        future = loop.run_in_executor(executor, kafka_task, host, kafka, queue, db, logger, events, memory)
-        futures.append(asyncio.wrap_future(future))
+        future = asyncio.wrap_future(
+            loop.run_in_executor(executor, kafka_task, host, kafka, queue, db, logger, events, memory)
+        )
+        future.add_done_callback(check_exception)
+        futures.append(future)
 
         # Start sender task
-        future = loop.run_in_executor(executor, sender_task, openbmp, queue, db, logger, memory)
-        futures.append(asyncio.wrap_future(future))
+        future = asyncio.wrap_future(
+            loop.run_in_executor(executor, sender_task, openbmp, queue, db, logger, memory)
+        )
+        future.add_done_callback(check_exception)
+        futures.append(future)
 
         # Start logging task
-        future = loop.run_in_executor(executor, logging_task, host, queue, logger, memory)
-        futures.append(asyncio.wrap_future(future))
+        future = asyncio.wrap_future(
+            loop.run_in_executor(executor, logging_task, host, queue, logger, memory)
+        )
+        future.add_done_callback(check_exception)
+        futures.append(future)
 
         # Wait for the shutdown event
         await shutdown_event.wait()
@@ -135,8 +154,9 @@ async def main():
 
         logger.info("Shutdown complete.")
 
-        # Exit the program
-        sys.exit()
+        # Terminate
+        os._exit(1)
+
 
 if __name__ == "__main__":
     main()
