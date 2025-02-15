@@ -274,6 +274,9 @@ def rib_task(host, queue, db, logger, events, memory):
     for peer, timestamp in max_timestamps.items():
         db.set(f'timestamp_{peer}'.encode('utf-8'), struct.pack('>d', timestamp))
 
+    # Set database as not ready
+    db.set(b'ready', b'\x00')
+
     # Enqueue each final BMP message
     for message in messages:
         queue.put((message, 0, None, -1, True))
