@@ -27,7 +27,7 @@ import threading
 import asyncio
 import logging
 import signal
-import sys
+import time
 import os
 
 # Logger
@@ -143,11 +143,22 @@ async def main():
     finally:
         logger.info("Shutting down...")
 
+        # Drain the queue
+        while not queue.empty():
+            try:
+                queue.get_nowait()
+            except queueio.Empty:
+                break
+
         # Terminate the BMP connection
         message = BMPv3.term_message(
             reason_code=1
         )
         queue.put((message, 0, None, -1, False))
+
+        # Wait for completion
+        while not queue.empty():
+            time.sleep(2)
 
         # Shutdown the executor
         executor.shutdown(wait=False, cancel_futures=True)
