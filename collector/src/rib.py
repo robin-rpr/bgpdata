@@ -181,7 +181,8 @@ def rib_task(host, queue, db, logger, events, memory):
     with open(tmp_file, 'wb') as f:
         f.write(response.content)
 
-    timestamps = {}
+    max_timestamps = {}
+    min_timestamps = {}
     messages = []
     buckets = {}
     peers = []
@@ -197,6 +198,7 @@ def rib_task(host, queue, db, logger, events, memory):
 
     # Iterate through the RIB entries
     iterator = MRT(tmp_file)
+    peer_indexes = set()
     for entry in iterator:
         memory['rows_processed'] += 1
         # Process only TABLE_DUMP_V2 RIB_IPV4_UNICAST entries.
@@ -210,13 +212,20 @@ def rib_task(host, queue, db, logger, events, memory):
                 if db.get(f'timestamp_{peers[rib_entry["peer_index"]]["asn"]}'.encode('utf-8')) is not None:
                     continue
 
+                # Add the peer index to the set of updating peer indexes
+                peer_indexes.add(rib_entry['peer_index'])
+
                 # Compute a bucket key based on the peer index and the hash of the path attributes
                 raw_path_attributes = b"".join(rib_entry['raw_bgp_attributes'])
                 bucket_key = f"{rib_entry['peer_index']}_{hash(raw_path_attributes)}"
 
-                # Update the timestamp if we find an earlier one for the peer
-                if peers[rib_entry['peer_index']]['asn'] not in timestamps or float(entry['mrt_header']['timestamp']) > timestamps[peers[rib_entry['peer_index']]['asn']]:
-                    timestamps[peers[rib_entry['peer_index']]['asn']] = float(entry['mrt_header']['timestamp'])
+                # Update the maximum timestamp if we find a newer one for the peer
+                if peers[rib_entry['peer_index']]['asn'] not in max_timestamps or float(entry['mrt_header']['timestamp']) > max_timestamps[peers[rib_entry['peer_index']]['asn']]:
+                    max_timestamps[peers[rib_entry['peer_index']]['asn']] = float(entry['mrt_header']['timestamp'])
+
+                # Update the minimum timestamp if we find an older one for the peer
+                if peers[rib_entry['peer_index']]['asn'] not in min_timestamps or float(entry['mrt_header']['timestamp']) < min_timestamps[peers[rib_entry['peer_index']]['asn']]:
+                    min_timestamps[peers[rib_entry['peer_index']]['asn']] = float(entry['mrt_header']['timestamp'])
 
                 if bucket_key in buckets:
                     buckets[bucket_key].add_prefix(raw_prefix_nlri)
@@ -232,20 +241,37 @@ def rib_task(host, queue, db, logger, events, memory):
                                                         host,
                                                         entry['mrt_header']['timestamp'])
 
-    logger.info(f"Completed processing of RIB file. Preparing {len(buckets)} BMP messages")
+    logger.info(f"Completed processing RIB file.")
 
-    # Finalize each bucket to build the BMP messages and update metrics
+    # Queue the BMP Peer Up messages
+    for peer_index in peer_indexes:
+        bmp_message = BMPv3.peer_up_message(
+            peers[peer_index]['ip_address'],
+            peers[peer_index]['asn'],
+            min_timestamps[peers[peer_index]['asn']] - 1, host)
+        messages.append(bmp_message)
+
+    # Queue the BMP Monitoring Update messages
     for bucket in buckets.values():
         bmp_message = bucket.finalize_bucket()
         if bmp_message is not None:
             messages.append(bmp_message)
 
-    # Store the timestamp for each new peer
-    for peer, timestamp in timestamps.items():
-        db.set(f'timestamp_{peer}'.encode('utf-8'), struct.pack('>d', timestamp))
+    # Queue the BMP Monitoring End-of-RIB messages
+    for peer_index in peer_indexes:
+        bgp_update = bytes.fromhex("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00130200000000")
+        bmp_message = BMPv3.monitoring_message(
+            peers[peer_index]['ip_address'],
+            peers[peer_index]['asn'],
+            max_timestamps[peers[peer_index]['asn']] + 1,
+            bgp_update,
+            host
+        )
+        messages.append(bmp_message)
 
-    if len(messages) == 0:
-        logger.info("Collector's RIB database is already up-to-date")
+    # Store the maximum timestamp for each new peer
+    for peer, timestamp in max_timestamps.items():
+        db.set(f'timestamp_{peer}'.encode('utf-8'), struct.pack('>d', timestamp))
 
     # Enqueue each final BMP message
     for message in messages:

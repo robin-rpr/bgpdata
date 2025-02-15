@@ -192,7 +192,7 @@ class BMPv3:
         return bmp_message
 
     @staticmethod
-    def peer_down_message(peer_ip, peer_asn, timestamp, bgp_notification, collector):
+    def peer_down_message(peer_ip, peer_asn, timestamp, reason_code, bgp_notification, collector):
         """
         Construct a BMP Peer Down Notification message.
 
@@ -200,6 +200,7 @@ class BMPv3:
             peer_ip (str): The peer IP address.
             peer_asn (int): The peer AS number.
             timestamp (float): The timestamp.
+            reason_code (int): The reason code.
             bgp_notification (bytes): The BGP NOTIFICATION message in bytes.
             collector (str): The collector name.
             
@@ -210,8 +211,13 @@ class BMPv3:
         bmp_msg_type = 2  # Peer Down Notification
         per_peer_header = BMPv3.per_peer_header(peer_ip, peer_asn, timestamp, collector)
 
-        # Reason: 1-byte code indicating the reason. For simplicity, use 1 (Local system closed the session)
-        reason = struct.pack('!B', 1)  # Reason Code 1
+        # Reason: 1-byte code indicating the reason.
+        #         Code 1: Local system closed with notification
+        #         Code 2: Local system closed without notification
+        #         Code 3: Remote system closed with notification
+        #         Code 4: Remote system closed without notification
+        #         Code 5: Peer monitoring stopped.
+        reason = struct.pack('!B', reason_code)
 
         total_length = BMPv3.BMP_HDRv3_LEN + len(per_peer_header) + len(reason) + len(bgp_notification)
 
