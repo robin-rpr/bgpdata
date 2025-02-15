@@ -181,7 +181,7 @@ def kafka_task(host, kafka, queue, db, logger, events, memory):
     # Start Polling
     while True:
         # Consume a batch of messages
-        msgs = consumer.consume(100000)
+        msgs = consumer.consume(100000, timeout=0.1)
 
         if not msgs:
             continue
