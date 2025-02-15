@@ -36,9 +36,9 @@ log_level = os.getenv('COLLECTOR_LOG_LEVEL', 'INFO').upper()
 logger.setLevel(getattr(logging, log_level, logging.INFO))
 
 # Environment variables
-openbmp = os.getenv('COLLECTOR_OPENBMP_CONNECT')
-kafka = os.getenv('COLLECTOR_KAFKA_CONNECT')
-host = os.getenv('COLLECTOR_HOST')
+OPENBMP_CONNECT = os.getenv('COLLECTOR_OPENBMP_CONNECT')
+KAFKA_CONNECT = os.getenv('COLLECTOR_KAFKA_CONNECT')
+HOST = os.getenv('COLLECTOR_HOST')
 
 # Signal handler
 def handle_shutdown(signum, frame, shutdown_event):
@@ -98,8 +98,8 @@ async def main():
 
         # Initialize the BMP connection
         message = BMPv3.init_message(
-            router_name=host,
-            router_descr=f'{host}.routeviews.org'
+            router_name=f'{HOST}.ripe.net' if HOST.startswith('rrc') else HOST,
+            router_descr=f'{HOST}.ripe.net' if HOST.startswith('rrc') else f'{HOST}.routeviews.org'
         )
         queue.put((message, 0, None, -1, False))
 
@@ -112,28 +112,28 @@ async def main():
 
         # Start rib task
         future = asyncio.wrap_future(
-            loop.run_in_executor(executor, rib_task, host, queue, db, logger, events, memory)
+            loop.run_in_executor(executor, rib_task, HOST, queue, db, logger, events, memory)
         )
         future.add_done_callback(check_exception)
         futures.append(future)
 
         # Start kafka task
         future = asyncio.wrap_future(
-            loop.run_in_executor(executor, kafka_task, host, kafka, queue, db, logger, events, memory)
+            loop.run_in_executor(executor, kafka_task, HOST, KAFKA_CONNECT, queue, db, logger, events, memory)
         )
         future.add_done_callback(check_exception)
         futures.append(future)
 
         # Start sender task
         future = asyncio.wrap_future(
-            loop.run_in_executor(executor, sender_task, openbmp, queue, db, logger, memory)
+            loop.run_in_executor(executor, sender_task, OPENBMP_CONNECT, queue, db, logger, memory)
         )
         future.add_done_callback(check_exception)
         futures.append(future)
 
         # Start logging task
         future = asyncio.wrap_future(
-            loop.run_in_executor(executor, logging_task, host, queue, logger, memory)
+            loop.run_in_executor(executor, logging_task, HOST, queue, logger, memory)
         )
         future.add_done_callback(check_exception)
         futures.append(future)

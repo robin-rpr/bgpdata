@@ -238,7 +238,7 @@ def rib_task(host, queue, db, logger, events, memory):
                                                         raw_path_attributes,
                                                         raw_prefix_nlri,
                                                         mp_reach,
-                                                        host,
+                                                        f'{host}.ripe.net' if host.startswith('rrc') else host,
                                                         entry['mrt_header']['timestamp'])
 
     logger.info(f"Completed processing RIB file.")
@@ -248,7 +248,8 @@ def rib_task(host, queue, db, logger, events, memory):
         bmp_message = BMPv3.peer_up_message(
             peers[peer_index]['ip_address'],
             peers[peer_index]['asn'],
-            min_timestamps[peers[peer_index]['asn']] - 1, host)
+            min_timestamps[peers[peer_index]['asn']] - 1,
+            f'{host}.ripe.net' if host.startswith('rrc') else host)
         messages.append(bmp_message)
 
     # Queue the BMP Monitoring Update messages
@@ -265,7 +266,7 @@ def rib_task(host, queue, db, logger, events, memory):
             peers[peer_index]['asn'],
             max_timestamps[peers[peer_index]['asn']] + 1,
             bgp_update,
-            host
+            f'{host}.ripe.net' if host.startswith('rrc') else host
         )
         messages.append(bmp_message)
 
