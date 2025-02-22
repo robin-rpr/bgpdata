@@ -41,7 +41,7 @@ KAFKA_CONNECT = os.getenv('COLLECTOR_KAFKA_CONNECT')
 HOST = os.getenv('COLLECTOR_HOST')
 
 # Signal handler
-def handle_shutdown(signum, frame, shutdown_event):
+def handle_shutdown(signum, frame, event):
     """
     Signal handler for shutdown.
 
@@ -51,7 +51,7 @@ def handle_shutdown(signum, frame, shutdown_event):
         shutdown_event (asyncio.Event): The shutdown event.
     """
     logger.info(f"Signal {signum}. Triggering shutdown...")
-    shutdown_event.set()
+    event.set()
 
 # Main Coroutine
 async def main():
@@ -64,14 +64,15 @@ async def main():
     }
 
     events = {
-        'injection': threading.Event()
+        'injection': threading.Event(),
+        'shutdown': threading.Event(),
     }
 
     # Queue
     queue = queueio.Queue(maxsize=10000000)
 
     # Executor
-    executor = ThreadPoolExecutor()
+    executor = ThreadPoolExecutor(max_workers=4)
 
     # Database
     db = rocksdbpy.open_default("/var/lib/rocksdb")
@@ -82,13 +83,10 @@ async def main():
     try:
         logger.info("Starting up...")
 
-        # Create an event to signal shutdown
-        shutdown_event = asyncio.Event()
-
         # Register SIGTERM handler
         loop = asyncio.get_event_loop()
-        loop.add_signal_handler(signal.SIGTERM, handle_shutdown, signal.SIGTERM, None, shutdown_event)
-        loop.add_signal_handler(signal.SIGINT, handle_shutdown, signal.SIGINT, None, shutdown_event)  # Handle Ctrl+C
+        loop.add_signal_handler(signal.SIGTERM, handle_shutdown, signal.SIGTERM, None, events['shutdown'])
+        loop.add_signal_handler(signal.SIGINT, handle_shutdown, signal.SIGINT, None, events['shutdown'])  # Handle Ctrl+C
 
         # Validate database state
         if db.get(b'started') == b'\x01':
@@ -105,9 +103,10 @@ async def main():
 
         # Check for exceptions in each task
         def check_exception(fut):
+            nonlocal events
             exc = fut.exception()
             if exc is not None:
-                shutdown_event.set()
+                events['shutdown'].set()
                 raise exc
 
         # Start rib task
@@ -126,7 +125,7 @@ async def main():
 
         # Start sender task
         future = asyncio.wrap_future(
-            loop.run_in_executor(executor, sender_task, OPENBMP_CONNECT, queue, db, logger, memory)
+            loop.run_in_executor(executor, sender_task, OPENBMP_CONNECT, queue, db, logger, events, memory)
         )
         future.add_done_callback(check_exception)
         futures.append(future)
@@ -139,26 +138,11 @@ async def main():
         futures.append(future)
 
         # Wait for the shutdown event
-        await shutdown_event.wait()
+        events['shutdown'].wait()
+    except Exception as e:
+        logger.critical(e, exc_info=True)
     finally:
         logger.info("Shutting down...")
-
-        # Drain the queue
-        while not queue.empty():
-            try:
-                queue.get_nowait()
-            except queueio.Empty:
-                break
-
-        # Terminate the BMP connection
-        message = BMPv3.term_message(
-            reason_code=1
-        )
-        queue.put((message, 0, None, -1, False))
-
-        # Wait for completion
-        while not queue.empty():
-            time.sleep(2)
 
         # Shutdown the executor
         executor.shutdown(wait=False, cancel_futures=True)
@@ -167,7 +151,6 @@ async def main():
 
         # Terminate
         os._exit(1)
-
 
 if __name__ == "__main__":
     main()

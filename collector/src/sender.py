@@ -15,12 +15,13 @@ Redistribution and use in source and binary forms, with or without modification,
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
+from libs.bmp import BMPv3
 import queue as queueio
 import select
 import socket
 import time
 
-def sender_task(openbmp, queue, db, logger, memory):
+def sender_task(openbmp, queue, db, logger, events, memory):
     """
     Task to transmit messages from the queue to the OpenBMP TCP socket.
     """
@@ -38,6 +39,14 @@ def sender_task(openbmp, queue, db, logger, memory):
                 ready_to_read, _, _ = select.select([sock], [], [], 0)
                 if ready_to_read and not sock.recv(1, socket.MSG_PEEK):
                     raise ConnectionError("TCP connection closed by the peer")
+
+                # Check for shutdown event
+                if events['shutdown'].is_set():
+                    # Terminate the BMP connection
+                    sock.sendall(BMPv3.term_message(
+                        reason_code=1
+                    ))
+                    break
 
                 # Get the message from the queue
                 message, offset, topic, partition, update = queue.get()

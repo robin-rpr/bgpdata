@@ -241,38 +241,42 @@ def rib_task(host, queue, db, logger, events, memory):
                                                         f'{host}.ripe.net' if host.startswith('rrc') else host,
                                                         entry['mrt_header']['timestamp'])
 
-    logger.info(f"Completed processing RIB file.")
+    # Check for updates
+    if len(buckets) > 0:
+        logger.info(f"Assembling {len(buckets)} BMP messages.")
 
-    # Queue the BMP Peer Up messages
-    for peer_index in peer_indexes:
-        bmp_message = BMPv3.peer_up_message(
-            peers[peer_index]['ip_address'],
-            peers[peer_index]['asn'],
-            min_timestamps[peers[peer_index]['asn']] - 1,
-            f'{host}.ripe.net' if host.startswith('rrc') else host)
-        messages.append(bmp_message)
-
-    # Queue the BMP Monitoring Update messages
-    for bucket in buckets.values():
-        bmp_message = bucket.finalize_bucket()
-        if bmp_message is not None:
+        # Queue the BMP Peer Up messages
+        for peer_index in peer_indexes:
+            bmp_message = BMPv3.peer_up_message(
+                peers[peer_index]['ip_address'],
+                peers[peer_index]['asn'],
+                min_timestamps[peers[peer_index]['asn']] - 1,
+                f'{host}.ripe.net' if host.startswith('rrc') else host)
             messages.append(bmp_message)
 
-    # Queue the BMP Monitoring End-of-RIB messages
-    for peer_index in peer_indexes:
-        bgp_update = bytes.fromhex("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00130200000000")
-        bmp_message = BMPv3.monitoring_message(
-            peers[peer_index]['ip_address'],
-            peers[peer_index]['asn'],
-            max_timestamps[peers[peer_index]['asn']] + 1,
-            bgp_update,
-            f'{host}.ripe.net' if host.startswith('rrc') else host
-        )
-        messages.append(bmp_message)
+        # Queue the BMP Monitoring Update messages
+        for bucket in buckets.values():
+            bmp_message = bucket.finalize_bucket()
+            if bmp_message is not None:
+                messages.append(bmp_message)
 
-    # Store the maximum timestamp for each new peer
-    for peer, timestamp in max_timestamps.items():
-        db.set(f'timestamp_{peer}'.encode('utf-8'), struct.pack('>d', timestamp))
+        # Queue the BMP Monitoring End-of-RIB messages
+        for peer_index in peer_indexes:
+            bgp_update = bytes.fromhex("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00130200000000")
+            bmp_message = BMPv3.monitoring_message(
+                peers[peer_index]['ip_address'],
+                peers[peer_index]['asn'],
+                max_timestamps[peers[peer_index]['asn']] + 1,
+                bgp_update,
+                f'{host}.ripe.net' if host.startswith('rrc') else host
+            )
+            messages.append(bmp_message)
+
+        # Store the maximum timestamp for each new peer
+        for peer, timestamp in max_timestamps.items():
+            db.set(f'timestamp_{peer}'.encode('utf-8'), struct.pack('>d', timestamp))
+    else:
+        logger.info("No updates to assemble.")
 
     # Set database as not ready
     db.set(b'ready', b'\x00')
