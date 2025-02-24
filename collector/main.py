@@ -77,9 +77,6 @@ async def main():
     # Database
     db = rocksdbpy.open_default("/var/lib/rocksdb")
 
-    # Futures
-    futures = []
-
     try:
         logger.info("Starting up...")
 
@@ -101,46 +98,22 @@ async def main():
         )
         queue.put((message, 0, None, -1, False))
 
-        # Check for exceptions in each task
-        def check_exception(fut):
-            nonlocal events
-            exc = fut.exception()
-            if exc is not None:
-                events['shutdown'].set()
-                raise exc
-
         # Start rib task
-        future = asyncio.wrap_future(
-            loop.run_in_executor(executor, rib_task, HOST, queue, db, logger, events, memory)
-        )
-        future.add_done_callback(check_exception)
-        futures.append(future)
+        loop.run_in_executor(executor, rib_task, HOST, queue, db, logger, events, memory)
 
         # Start kafka task
-        future = asyncio.wrap_future(
-            loop.run_in_executor(executor, kafka_task, HOST, KAFKA_CONNECT, queue, db, logger, events, memory)
-        )
-        future.add_done_callback(check_exception)
-        futures.append(future)
+        loop.run_in_executor(executor, kafka_task, HOST, KAFKA_CONNECT, queue, db, logger, events, memory)
 
         # Start sender task
-        future = asyncio.wrap_future(
-            loop.run_in_executor(executor, sender_task, OPENBMP_CONNECT, queue, db, logger, events, memory)
-        )
-        future.add_done_callback(check_exception)
-        futures.append(future)
+        loop.run_in_executor(executor, sender_task, OPENBMP_CONNECT, queue, db, logger, events, memory)
 
         # Start logging task
-        future = asyncio.wrap_future(
-            loop.run_in_executor(executor, logging_task, HOST, queue, logger, memory)
-        )
-        future.add_done_callback(check_exception)
-        futures.append(future)
+        loop.run_in_executor(executor, logging_task, HOST, queue, logger, events, memory)
 
         # Wait for the shutdown event
         events['shutdown'].wait()
     except Exception as e:
-        logger.critical(e, exc_info=True)
+        logger.error(e, exc_info=True)
     finally:
         logger.info("Shutting down...")
 
