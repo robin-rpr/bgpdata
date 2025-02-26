@@ -1,4 +1,5 @@
-#####
+version: '3.8'
+####
 # BGPDATA - BGP Data Collection and Analytics Service
 # 
 # This software is part of the BGPDATA project, which is designed to collect, process, and analyze BGP data from various sources.
@@ -28,12 +29,11 @@ services:
     # The 'core-web' service is the main application server, built with Flask
     # and served using Gunicorn with Uvicorn workers for asynchronous processing.
     #
-    # The 'core-collector' service connects to a Kafka stream, processes BGP messages,
+    # The 'core-collector-*' service connects to a Kafka stream, processes BGP messages,
     # and forwards them to the OpenBMP collector.
     ####
     core-db:
         image: timescale/timescaledb:latest-pg13
-        container_name: core-db
         restart: unless-stopped
         healthcheck:
             test: ["CMD-SHELL", "pg_isready -U core -d default"]
@@ -47,12 +47,19 @@ services:
         ports:
             - "5432:5432"
         volumes:
-            - core_pg_data:/var/lib/postgresql/data
+            - core_postgres_data:/var/lib/postgresql/data
 
     core-web:
         build: .
-        container_name: core-web
+        image: bgpdata/web:latest
         restart: unless-stopped
+        deploy:
+            labels:
+                - "traefik.enable=true"
+                - "traefik.http.routers.bgpdata.rule=Host(`bgp-data.net`)"
+                - "traefik.http.routers.bgpdata.entrypoints=websecure"
+                - "traefik.http.routers.bgpdata.tls.certresolver=bgpdata"
+                - "traefik.http.services.bgpdata.loadbalancer.server.port=8080"
         healthcheck:
             test: ["CMD", "curl", "-f", "http://localhost:8080"]
             interval: 30s
@@ -68,8 +75,6 @@ services:
             POSTMARK_API_KEY: your-postmark-api-key
             SECRET_KEY: your-flask-secret-key
             ENVIRONMENT: development
-        ports:
-            - "8080:8080"
         depends_on:
             core-db:
                 condition: service_healthy
@@ -77,11 +82,33 @@ services:
         volumes:
             - .:/app
         entrypoint: >
-            /bin/sh -c "python manage.py migrate && python manage.py run --host=0.0.0.0 --port=8080"
+            /bin/sh -c "python manage.py migrate && python manage.py run --host 0.0.0.0"
 
-    core-collector:
+    core-traefik:
+        image: traefik:v2.4
+        ports:
+            - "80:80"
+            - "443:443"
+        deploy:
+        placement:
+            constraints:
+            - node.role == manager
+        command:
+            - "--entrypoints.web.address=:80"
+            - "--entrypoints.websecure.address=:443"
+            - "--providers.docker.swarmMode=true"
+            - "--providers.docker.exposedbydefault=false"
+            - "--certificatesresolvers.bgpdata.acme.httpchallenge.entrypoint=web"
+            - "--certificatesresolvers.bgpdata.acme.email=hostmaster@bgp-data.net"
+            - "--certificatesresolvers.bgpdata.acme.storage=/acme.json"
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock:ro
+            - core_traefik_data:/acme.json
+
+    {% for host in ris %}
+    core-collector-{{ host | replace(".", "-") }}:
         build: .
-        container_name: core-collector
+        image: bgpdata/collector:latest
         restart: unless-stopped
         stop_signal: SIGTERM                    # Wind down collector safely before stopping
         stop_grace_period: 20s                  # Wait for 20 seconds before forcefully stopping
@@ -91,10 +118,9 @@ services:
             POSTGRESQL_DB: default
             POSTGRESQL_USER: core
             POSTGRESQL_PASSWORD: core
-            COLLECTOR_HOST: route-views.amsix
-            COLLECTOR_KAFKA_CONNECT: stream.routeviews.org:9092
-            COLLECTOR_OPENBMP_CONNECT: openbmp-collector:5000
-            COLLECTOR_LOG_LEVEL: DEBUG
+            COLLECTOR_HOST: {{ host }}
+            COLLECTOR_KAFKA_CONNECT: stream.ris-kafka.com:9092
+            COLLECTOR_OPENBMP_CONNECT: openbmp-collector-{{ host | replace(".", "-") }}:5000
         depends_on:
             core-db:
                 condition: service_healthy
@@ -103,9 +129,39 @@ services:
         working_dir: /app
         volumes:
             - .:/app
-            - core_rd_data:/var/lib/rocksdb
+            - core_{{ host | replace(".", "_") | replace("-", "_") }}_data:/var/lib/rocksdb
         entrypoint: >
             python manage.py collector
+    {% endfor %}
+
+    {% for host in routeviews %}
+    core-collector-{{ host | replace(".", "-") }}:
+        build: .
+        image: bgpdata/collector:latest
+        restart: unless-stopped
+        stop_signal: SIGTERM                    # Wind down collector safely before stopping
+        stop_grace_period: 20s                  # Wait for 20 seconds before forcefully stopping
+        environment:
+            POSTGRESQL_HOST: core-db
+            POSTGRESQL_PORT: 5432
+            POSTGRESQL_DB: default
+            POSTGRESQL_USER: core
+            POSTGRESQL_PASSWORD: core
+            COLLECTOR_HOST: {{ host }}
+            COLLECTOR_KAFKA_CONNECT: stream.routeviews.org:9092
+            COLLECTOR_OPENBMP_CONNECT: openbmp-collector-{{ host | replace(".", "-") }}:5000
+        depends_on:
+            core-db:
+                condition: service_healthy
+            openbmp-collector:
+                condition: service_healthy
+        working_dir: /app
+        volumes:
+            - .:/app
+            - core_{{ host | replace(".", "_") | replace("-", "_") }}_data:/var/lib/rocksdb
+        entrypoint: >
+            python manage.py collector
+    {% endfor %}
 
     ###
     # OpenBMP (Open Border Gateway Protocol Monitoring Protocol) services
@@ -134,14 +190,13 @@ services:
     # BGP data. It allows users to query the database, visualize BGP data, and generate
     # reports on routing behavior and anomalies.
     #
-    # The 'openbmp-collector' service ingests BMP messages from the 'core-collector' service.
+    # The 'openbmp-collector-*' service ingests BMP messages from the 'core-collector-*' service.
     # Which is collecting from various other collectors and RIB dumps.
     #
     # The 'openbmp-grafana' service provides a Grafana dashboard for visualizing the data
     # collected and processed by the application, offering insights and monitoring capabilities.
     ###
     openbmp-db:
-        container_name: openbmp-db
         image: openbmp/postgres:2.2.1
         platform: linux/amd64
         restart: unless-stopped
@@ -159,8 +214,8 @@ services:
             - net.ipv4.tcp_keepalive_probes=5
             - net.ipv4.tcp_keepalive_time=180
         volumes:
-            - obmp_pg_data:/var/lib/postgresql/data
-            - obmp_ts_data:/var/lib/postgresql/ts
+            - obmp_postgres_data:/var/lib/postgresql/data
+            - obmp_timescale_data:/var/lib/postgresql/ts
         command: >
             -c max_wal_size=10GB
         environment:
@@ -169,7 +224,6 @@ services:
             POSTGRES_DB: openbmp
         
     openbmp-app:
-        container_name: openbmp-app
         image: openbmp/psql-app:2.2.2
         platform: linux/amd64
         restart: unless-stopped
@@ -183,7 +237,7 @@ services:
             openbmp-kafka:
                 condition: service_healthy
         volumes:
-            - obmp_cf_data:/config
+            - obmp_config_data:/config
         environment:
             MEM: 3                                           # Set memory to at least 2GB but ideally 4GB
             KAFKA_FQDN: openbmp-kafka:29092
@@ -215,8 +269,8 @@ services:
             POSTGRES_DROP_stats_peer_rib: '1 day'
             POSTGRES_DROP_stats_peer_update_counts: '1 day'
 
-    openbmp-collector:
-        container_name: openbmp-collector
+    {% for host in ris + routeviews %}
+    openbmp-collector-{{ host | replace(".", "-") }}:
         platform: linux/amd64
         restart: unless-stopped
         healthcheck:
@@ -235,12 +289,12 @@ services:
             - net.ipv4.tcp_keepalive_probes=5
             - net.ipv4.tcp_keepalive_time=180
         volumes:
-            - obmp_cf_data:/config
+            - obmp_config_data:/config
         environment:
             KAFKA_FQDN: openbmp-kafka:29092
+    {% endfor %}
 
     openbmp-whois:
-        container_name: openbmp-whois
         image: openbmp/whois:2.2.0
         platform: linux/amd64
         restart: unless-stopped
@@ -254,7 +308,7 @@ services:
             - net.ipv4.tcp_keepalive_probes=5
             - net.ipv4.tcp_keepalive_time=180
         volumes:
-            - obmp_cf_data:/config
+            - obmp_config_data:/config
         depends_on:
             openbmp-db:
                 condition: service_healthy
@@ -268,7 +322,6 @@ services:
             POSTGRES_PORT: 5433
 
     openbmp-zookeeper:
-        container_name: openbmp-zookeeper
         image: confluentinc/cp-zookeeper:7.7.1
         restart: unless-stopped
         healthcheck:
@@ -277,13 +330,12 @@ services:
             timeout: 10s
             retries: 5
         volumes:
-            - obmp_zk_data:/var/lib/zookeeper
+            - obmp_zookeeper_data:/var/lib/zookeeper
         environment:
             ZOOKEEPER_CLIENT_PORT: 2181
             ZOOKEEPER_TICK_TIME: 2000
 
     openbmp-kafka:
-        container_name: openbmp-kafka
         image: confluentinc/cp-kafka:7.7.1
         restart: unless-stopped
         healthcheck:
@@ -297,7 +349,7 @@ services:
         # Change the mount point to where you want to store Kafka data.
         #   Normally 80GB or more
         volumes:
-            - obmp_kf_data:/var/lib/kafka/data
+            - obmp_kafka_data:/var/lib/kafka/data
         environment:
             KAFKA_BROKER_ID: 1
             KAFKA_ZOOKEEPER_CONNECT: openbmp-zookeeper:2181
@@ -317,7 +369,6 @@ services:
             KAFKA_LOG_CLEANER_THREADS: 2
 
     openbmp-grafana:
-        container_name: openbmp-grafana
         image: grafana/grafana:9.1.7
         restart: unless-stopped
         healthcheck:
@@ -339,10 +390,13 @@ services:
 
 # Define volumes
 volumes:
-    core_rd_data:
-    core_pg_data:
-    obmp_cf_data:
-    obmp_pg_data:
-    obmp_ts_data:
-    obmp_zk_data:
-    obmp_kf_data:
+    {% for host in ris + routeviews %}
+    core_{{ host | replace(".", "_") | replace("-", "_") }}_data:
+    {% endfor %}
+    core_traefik_data:
+    core_postgres_data:
+    obmp_config_data:
+    obmp_postgres_data:
+    obmp_timescale_data:
+    obmp_zookeeper_data:
+    obmp_kafka_data:

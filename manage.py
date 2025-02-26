@@ -20,6 +20,24 @@ def cli():
     """BGPDATA Management Script."""
     pass
 
+@cli.command("run")
+@click.option("--workers", default="1", help="Number of workers to run with Gunicorn")
+@click.option("--host", default="localhost", help="Host to run the application on")
+@click.option("--port", default=8080, help="Port to run the application on")
+def run(workers, host, port):
+    """
+    Runs the application.
+    """
+    import subprocess
+    subprocess.run([
+        "gunicorn", 
+        "--bind", f"{host}:{port}", 
+        "--workers", workers,
+        "--worker-class", "uvicorn.workers.UvicornWorker",
+        "app:asgi_app"
+    ])
+    
+
 @cli.command("collector")
 def collector():
     """
@@ -34,7 +52,6 @@ def migrate():
     """
     Runs database migrations.
     """
-    click.echo("Running migrations...")
     alembic_cfg = Config("alembic.ini")
     command.upgrade(alembic_cfg, "head")
 

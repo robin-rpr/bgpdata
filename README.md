@@ -21,6 +21,7 @@ Before you begin, ensure you have the following installed on your system:
 -   [Docker](https://docs.docker.com/get-docker/)
 -   [Docker Compose](https://docs.docker.com/compose/install/)
 -   [Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
+-   [Jinja2 CLI](https://github.com/mattrobenolt/jinja2-cli)
 
 ## Getting Started
 
@@ -40,17 +41,17 @@ cd bgpdata
 The project directory contains the following files:
 
 -   `Dockerfile`: Dockerfile for building the application image.
--   `docker-compose.yaml`: Docker Compose file to set up the application and OpenBMP services.
+-   `docker-compose.tpl`: Docker Compose template file with Jinja2 templating.
 -   `requirements.txt`: List of Python dependencies for the application.
--   `app.py`: The application code.
--   `Makefile`: Makefile for building and starting the services.
+-   `manage.py`: The application entrypoint.
+-   `values.yaml`: Values file for the Docker Compose template.
 
 ### Build and Start the Services
 
 To build and start BGPDATA, run the following command in the project directory:
 
 ```sh
-docker compose up -d
+jinja2 docker-compose.tpl values.yaml | docker-compose -f- "$@" -d
 ```
 
 This command will:
@@ -65,6 +66,14 @@ This command will:
 Once the services are up and running, you can access the user interface at [`http://localhost:8080`](http://localhost:8080).
 We also provide a REST API at [`http://localhost:8080/api/v1/`](http://localhost:8080/api/v1/) for programmatic access to the data (coming soon).
 As well as a Grafana dashboard at [`http://localhost:3000`](http://localhost:3000) to visualize the data and performance metrics (internal only).
+
+### Production Deployment
+
+For production deployment, we recommend using Docker Swarm.
+
+```sh
+jinja2 docker-compose.tpl values.yaml | docker stack deploy -c- bgpdata
+```
 
 # ACKs
 
