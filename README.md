@@ -51,7 +51,7 @@ The project directory contains the following files:
 To build and start BGPDATA, run the following command in the project directory:
 
 ```sh
-jinja2 docker-compose.tpl values.yaml | docker-compose -f- "$@" -d
+jinja2 docker-compose.jinja values.yaml | docker-compose up -f- "$@" -d
 ```
 
 This command will:
@@ -71,8 +71,20 @@ As well as a Grafana dashboard at [`http://localhost:3000`](http://localhost:300
 
 For production deployment, we recommend using Docker Swarm.
 
+1. Configure Secrets:
 ```sh
-jinja2 docker-compose.tpl values.yaml | docker stack deploy -c- bgpdata
+# Postmark API Key
+# https://postmarkapp.com/support/article/1008-what-are-the-account-and-server-api-tokens
+echo "YOUR_POSTMARK_API_KEY" | docker secret create postmark_api_key -
+
+# Flask Secret Key
+# https://flask.palletsprojects.com/en/2.3.x/config/#SECRET_KEY
+echo "YOUR_FLASK_SECRET_KEY" | docker secret create flask_secret_key -
+```
+
+2. Deploy the Stack:
+```sh
+curl -L https://downloads.bgp-data.net/docker-compose.yml | docker stack deploy -c - bgpdata
 ```
 
 # ACKs

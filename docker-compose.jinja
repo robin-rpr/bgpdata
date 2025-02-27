@@ -36,22 +36,25 @@ services:
         image: timescale/timescaledb:latest-pg13
         restart: unless-stopped
         healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U core -d default"]
+            test: ["CMD-SHELL", "pg_isready -U bgpdata -d default"]
             interval: 30s
             timeout: 10s
             retries: 5
         environment:
-            POSTGRES_USER: core
-            POSTGRES_PASSWORD: core
             POSTGRES_DB: default
+            POSTGRES_USER: bgpdata
+            POSTGRES_PASSWORD: bgpdata
         ports:
             - "5432:5432"
         volumes:
             - core_postgres_data:/var/lib/postgresql/data
 
     core-web:
+        {%- if production %}
+        image: bgpdata/bgpdata:{{ version | default('latest') }}
+        {%- else %}
         build: .
-        image: bgpdata/web:latest
+        {%- endif %}
         restart: unless-stopped
         deploy:
             labels:
@@ -67,14 +70,13 @@ services:
             retries: 3
             start_period: 40s
         environment:
-            POSTGRESQL_HOST: core-db
+            POSTGRESQL_HOST: "core-db"
             POSTGRESQL_PORT: 5432
-            POSTGRESQL_DB: default
-            POSTGRESQL_USER: core
-            POSTGRESQL_PASSWORD: core
-            POSTMARK_API_KEY: your-postmark-api-key
-            SECRET_KEY: your-flask-secret-key
-            ENVIRONMENT: development
+            POSTGRESQL_DB: "default"
+            POSTGRESQL_USER: "bgpdata"
+            POSTGRESQL_PASSWORD: "bgpdata"
+            POSTMARK_API_KEY: /run/secrets/postmark_api_key
+            SECRET_KEY: /run/secrets/flask_secret_key
         depends_on:
             core-db:
                 condition: service_healthy
@@ -90,9 +92,9 @@ services:
             - "80:80"
             - "443:443"
         deploy:
-        placement:
-            constraints:
-            - node.role == manager
+            placement:
+                constraints:
+                - node.role == manager
         command:
             - "--entrypoints.web.address=:80"
             - "--entrypoints.websecure.address=:443"
@@ -105,10 +107,13 @@ services:
             - /var/run/docker.sock:/var/run/docker.sock:ro
             - core_traefik_data:/acme.json
 
-    {% for host in ris %}
+    {%- for host in ris %}
     core-collector-{{ host | replace(".", "-") }}:
+        {%- if production %}
+        image: bgpdata/bgpdata:{{ version | default('latest') }}
+        {%- else %}
         build: .
-        image: bgpdata/collector:latest
+        {%- endif %}
         restart: unless-stopped
         stop_signal: SIGTERM                    # Wind down collector safely before stopping
         stop_grace_period: 20s                  # Wait for 20 seconds before forcefully stopping
@@ -116,8 +121,8 @@ services:
             POSTGRESQL_HOST: core-db
             POSTGRESQL_PORT: 5432
             POSTGRESQL_DB: default
-            POSTGRESQL_USER: core
-            POSTGRESQL_PASSWORD: core
+            POSTGRESQL_USER: bgpdata
+            POSTGRESQL_PASSWORD: bgpdata
             COLLECTOR_HOST: {{ host }}
             COLLECTOR_KAFKA_CONNECT: stream.ris-kafka.com:9092
             COLLECTOR_OPENBMP_CONNECT: openbmp-collector-{{ host | replace(".", "-") }}:5000
@@ -134,10 +139,13 @@ services:
             python manage.py collector
     {% endfor %}
 
-    {% for host in routeviews %}
+    {%- for host in routeviews %}
     core-collector-{{ host | replace(".", "-") }}:
+        {%- if production %}
+        image: bgpdata/bgpdata:{{ version | default('latest') }}
+        {%- else %}
         build: .
-        image: bgpdata/collector:latest
+        {%- endif %}
         restart: unless-stopped
         stop_signal: SIGTERM                    # Wind down collector safely before stopping
         stop_grace_period: 20s                  # Wait for 20 seconds before forcefully stopping
@@ -145,8 +153,8 @@ services:
             POSTGRESQL_HOST: core-db
             POSTGRESQL_PORT: 5432
             POSTGRESQL_DB: default
-            POSTGRESQL_USER: core
-            POSTGRESQL_PASSWORD: core
+            POSTGRESQL_USER: bgpdata
+            POSTGRESQL_PASSWORD: bgpdata
             COLLECTOR_HOST: {{ host }}
             COLLECTOR_KAFKA_CONNECT: stream.routeviews.org:9092
             COLLECTOR_OPENBMP_CONNECT: openbmp-collector-{{ host | replace(".", "-") }}:5000
@@ -269,7 +277,7 @@ services:
             POSTGRES_DROP_stats_peer_rib: '1 day'
             POSTGRES_DROP_stats_peer_update_counts: '1 day'
 
-    {% for host in ris + routeviews %}
+    {%- for host in ris + routeviews %}
     openbmp-collector-{{ host | replace(".", "-") }}:
         platform: linux/amd64
         restart: unless-stopped
@@ -390,9 +398,9 @@ services:
 
 # Define volumes
 volumes:
-    {% for host in ris + routeviews %}
+    {%- for host in ris + routeviews %}
     core_{{ host | replace(".", "_") | replace("-", "_") }}_data:
-    {% endfor %}
+    {%- endfor %}
     core_traefik_data:
     core_postgres_data:
     obmp_config_data:
